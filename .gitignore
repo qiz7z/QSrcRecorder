@@ -1,0 +1,15 @@
+bin/
+obj/
+publish/
+*.user
+*.suo
+tools/_extract/
+tools/ffmpeg/*.exe
+tools/ffmpeg/*.zip
+*.mp4
+tools/IconGen/bin/
+tools/IconGen/obj/
+tools/IconGen/out/
+tools/IconGen/*.png
+tools/IconGen/*.csx
+*.log

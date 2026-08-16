@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.22000.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>QSrcRecorder</AssemblyName>
+    <RootNamespace>ScreenRecorder</RootNamespace>
+    <Product>QSrcRecorder</Product>
+    <AssemblyTitle>QSrcRecorder 拾光留影</AssemblyTitle>
+    <ApplicationIcon>Assets\QSrcRecorder.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.183" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ScreenRecorder.Smoke" />
+    <InternalsVisibleTo Include="ScreenRecorder.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\QSrcRecorder.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\tools\ffmpeg\ffmpeg.exe" Link="ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\tools\ffmpeg\ffprobe.exe" Link="ffprobe.exe" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+</Project>
