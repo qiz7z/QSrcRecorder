@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading;
+using ScreenRecorder.Audio;
 using ScreenRecorder.Capture;
 using ScreenRecorder.Encoding;
 
@@ -30,6 +33,20 @@ public sealed record RecordingOptions
     public double Scale { get; init; } = 1.0;
     public EncoderKind Encoder { get; init; } = EncoderKind.Auto;
     public string OutputFolder { get; init; } = "";
+    /// <summary>同时录制麦克风声音。</summary>
+    public bool RecordAudio { get; init; } = false;
+    /// <summary>同时录制系统声音（WASAPI 回环）。</summary>
+    public bool RecordSystemAudio { get; init; } = false;
+    /// <summary>麦克风音量倍率（0.1 ~ 5.0，默认 1.0）。</summary>
+    public double MicVolume { get; init; } = 1.0;
+    /// <summary>系统声音音量倍率（0.1 ~ 5.0，默认 1.0）。</summary>
+    public double SysVolume { get; init; } = 1.0;
+    /// <summary>麦克风降噪门。</summary>
+    public bool MicNoiseGate { get; init; } = false;
+    /// <summary>系统声音低音增强（-5 ~ +5 dB，默认 0）。</summary>
+    public int SysBass { get; init; } = 0;
+    /// <summary>系统声音高音增强（-5 ~ +5 dB，默认 0）。</summary>
+    public int SysTreble { get; init; } = 0;
 }
 
 public sealed class RecordingResult
@@ -48,10 +65,13 @@ public sealed class RecordingResult
     public double WriteMs;
     /// <summary>诊断：编码端跟不上时丢弃的帧数。</summary>
     public long DroppedFrames;
+    /// <summary>音频合成警告（非致命，视频仍成功）。</summary>
+    public string? AudioWarning;
 
-    /// <summary>录制刚起步就因编码器失败（典型：双显卡机器上 NVENC 间歇不可用），适合自动降级重录。</summary>
+    /// <summary>录制刚起步就因编码器失败（典型：双显卡机器上 NVENC 间歇不可用），适合自动降级重录。
+    /// 帧数上限放宽到 12.5 秒（300 帧），覆盖编码中途失败的场景。</summary>
     public bool IsEarlyEncoderFailure =>
-        !Success && Error != null && EncoderUsed != EncoderKind.SoftwareX264 && FrameCount <= 90;
+        !Success && Error != null && EncoderUsed != EncoderKind.SoftwareX264 && FrameCount <= 300;
 }
 
 public static class RegionMath
@@ -272,6 +292,12 @@ public sealed class RecordingSession : IDisposable
     private double _captureMs;
     private double _writeMs;
     private EncoderKind _encoderUsed;
+    private AudioCapture? _audioCapture;
+    private string? _audioWavePath;
+    private SystemAudioCapture? _systemAudioCapture;
+    private string? _systemAudioWavePath;
+    private string? _tempMuxPath;
+    private string? _audioMuxWarning;
 
     public event Action<RecordingResult>? Completed;
 
@@ -280,7 +306,10 @@ public sealed class RecordingSession : IDisposable
     public string OutputPath => _outputPath;
     public TimeSpan RecordedDuration => TimeSpan.FromSeconds(_framesWritten / (double)_opts.Fps);
 
-    public RecordingSession(RecordingOptions opts, string ffmpegPath)
+    public RecordingSession(RecordingOptions opts, string ffmpegPath,
+        Overlays.ClickHighlightEngine? clickEngine = null,
+        string clickColorHex = "#DC2626",
+        bool mouseHighlight = false)
     {
         _opts = opts;
         _ffmpegPath = ffmpegPath;
@@ -351,6 +380,26 @@ public sealed class RecordingSession : IDisposable
             IsRecording = true;
             _loop = new Thread(Loop) { IsBackground = true, Name = "sr-capture-loop" };
             _loop.Start();
+
+            if (_opts.RecordAudio || _opts.RecordSystemAudio)
+            {
+                var tempFolder = Path.Combine(Path.GetTempPath(), "QSrcRecorder");
+                Directory.CreateDirectory(tempFolder);
+                if (_opts.RecordAudio)
+                {
+                    _audioCapture = new AudioCapture(tempFolder);
+                    _audioWavePath = _audioCapture.WavePath;
+                    try { _audioCapture.Start(); }
+                    catch (Exception ex) { _error = "音频设备不可用，继续纯视频录制：" + ex.Message; }
+                }
+                if (_opts.RecordSystemAudio)
+                {
+                    _systemAudioCapture = new SystemAudioCapture(tempFolder);
+                    _systemAudioWavePath = _systemAudioCapture.WavePath;
+                    try { _systemAudioCapture.Start(); }
+                    catch (Exception ex) { _error = "系统声音设备不可用，继续纯视频录制：" + ex.Message; }
+                }
+            }
         }
         catch
         {
@@ -457,6 +506,17 @@ public sealed class RecordingSession : IDisposable
         if (!encodeOk && _error == null)
             _error = "ffmpeg 编码失败：" + _encoder!.ErrorTail;
 
+        // 视频编码完成但输出无有效视频流（典型：双显卡机器上 NVENC 间歇性失败，
+        // 但 ffmpeg 进程仍以退出码 0 结束）：必须视为编码失败，否则合成阶段
+        // 会用"只有音频"的结果覆盖掉唯一有效的视频
+        if (encodeOk && (!File.Exists(_outputPath)
+            || new FileInfo(_outputPath).Length < 1000
+            || !HasVideoStream(_outputPath)))
+        {
+            encodeOk = false;
+            _error = "视频编码输出无效（无视频流），将自动改用软件编码重录";
+        }
+
         if (!encodeOk)
             _encoder?.DumpDiagnostics();
 
@@ -470,6 +530,113 @@ public sealed class RecordingSession : IDisposable
         _d3d = null;
         _encoder?.Dispose();
         _encoder = null;
+
+        // 停止音频捕获
+        _audioCapture?.Stop(); _audioCapture?.Dispose(); _audioCapture = null;
+        _systemAudioCapture?.Stop(); _systemAudioCapture?.Dispose(); _systemAudioCapture = null;
+
+        if (encodeOk && AudioHasContent())
+        {
+            // 音频通道有效性：文件存在且大于 100 字节（WAV 头 44 字节 + 少量数据），
+            // 避免设备异常时留下 46 字节的空文件导致 ffmpeg 合成失败
+            bool hasMic = !string.IsNullOrEmpty(_audioWavePath) && File.Exists(_audioWavePath)
+                && new FileInfo(_audioWavePath!).Length > 100;
+            bool hasSys = !string.IsNullOrEmpty(_systemAudioWavePath) && File.Exists(_systemAudioWavePath)
+                && new FileInfo(_systemAudioWavePath!).Length > 100;
+
+            // 视频源必须有效（存在、够大、含视频流），否则跳过合成保留原视频
+            bool videoValid = File.Exists(_outputPath)
+                && new FileInfo(_outputPath).Length > 1000
+                && HasVideoStream(_outputPath);
+
+            if (!videoValid)
+            {
+                _audioMuxWarning = "视频文件无效，已跳过音频合成";
+            }
+            else
+            {
+                _tempMuxPath = Path.Combine(Path.GetTempPath(), $"qsrc_mux_{Guid.NewGuid():N}.mp4");
+                try
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = _ffmpegPath, UseShellExecute = false,
+                        CreateNoWindow = true, RedirectStandardError = true,
+                    };
+                    string sysFilter = BuildSysAudioFilter();
+                    string micFilter = BuildMicAudioFilter();
+
+                    if (hasMic && hasSys)
+                    {
+                        var args = new[] {
+                            "-y", "-hide_banner", "-loglevel", "error",
+                            "-i", _outputPath, "-i", _systemAudioWavePath, "-i", _audioWavePath,
+                            "-c:v", "copy",
+                            "-filter_complex", BuildDualChannelFilterComplex(sysFilter, micFilter),
+                            "-map", "0:v:0", "-map", "[aout]",
+                            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", _tempMuxPath };
+                        foreach (var a in args) psi.ArgumentList.Add(a);
+                    }
+                    else if (hasSys)
+                    {
+                        var args = new List<string> { "-y", "-hide_banner", "-loglevel", "error", "-i", _outputPath, "-i", _systemAudioWavePath, "-c:v", "copy" };
+                        // 单通道滤镜必须带 [1:a] 输入标记（输入 1 = 系统声音），
+                        // 并且要同时 -map 0:v:0（视频）和 [aout]（音频），否则输出只含一轨
+                        if (!string.IsNullOrEmpty(sysFilter)) args.AddRange(new[] { "-filter_complex", "[1:a]" + sysFilter + "[aout]", "-map", "0:v:0", "-map", "[aout]" });
+                        else args.AddRange(new[] { "-map", "0:v:0", "-map", "1:a:0" });
+                        args.AddRange(new[] { "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", _tempMuxPath });
+                        foreach (var a in args) psi.ArgumentList.Add(a);
+                    }
+                    else
+                    {
+                        var args = new List<string> { "-y", "-hide_banner", "-loglevel", "error", "-i", _outputPath, "-i", _audioWavePath, "-c:v", "copy" };
+                        // 单通道滤镜必须带 [1:a] 输入标记（输入 1 = 麦克风），
+                        // 并且要同时 -map 0:v:0（视频）和 [aout]（音频），否则输出只含一轨
+                        if (!string.IsNullOrEmpty(micFilter)) args.AddRange(new[] { "-filter_complex", "[1:a]" + micFilter + "[aout]", "-map", "0:v:0", "-map", "[aout]" });
+                        else args.AddRange(new[] { "-map", "0:v:0", "-map", "1:a:0" });
+                        args.AddRange(new[] { "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", _tempMuxPath });
+                        foreach (var a in args) psi.ArgumentList.Add(a);
+                    }
+
+                    var proc = Process.Start(psi)!;
+                    _ = proc.StandardError.ReadToEnd();
+                    bool muxOk = proc.WaitForExit(30000) && proc.ExitCode == 0;
+                    if (!muxOk)
+                    {
+                        proc.Kill(true);
+                        _audioMuxWarning = "音频合成失败，视频已保存（不含音频）";
+                    }
+                    else
+                    {
+                        // 关键防御：mux 输出必须同时含视频流和音频流才替换原视频，
+                        // 防止 ffmpeg 在视频源异常时只输出音频、覆盖掉唯一有效的视频
+                        if (HasVideoStream(_tempMuxPath) && HasAudioStream(_tempMuxPath))
+                        {
+                            try
+                            {
+                                if (File.Exists(_outputPath)) File.Delete(_outputPath);
+                                File.Move(_tempMuxPath, _outputPath);
+                            }
+                            catch (Exception ex) { _audioMuxWarning = "音频合成后替换文件失败：" + ex.Message; }
+                        }
+                        else
+                        {
+                            _audioMuxWarning = "音频合成输出异常，已保留原视频（不含音频）";
+                        }
+                    }
+                }
+                catch (Exception ex) { _audioMuxWarning = "音频合成出错：" + ex.Message; }
+                finally
+                {
+                    try { if (!string.IsNullOrEmpty(_audioWavePath) && File.Exists(_audioWavePath)) File.Delete(_audioWavePath); } catch { }
+                    _audioWavePath = null;
+                    try { if (!string.IsNullOrEmpty(_systemAudioWavePath) && File.Exists(_systemAudioWavePath)) File.Delete(_systemAudioWavePath); } catch { }
+                    _systemAudioWavePath = null;
+                    try { if (!string.IsNullOrEmpty(_tempMuxPath) && File.Exists(_tempMuxPath)) File.Delete(_tempMuxPath); } catch { }
+                }
+            }
+        }
+
         IsRecording = false;
 
         var result = new RecordingResult
@@ -479,6 +646,7 @@ public sealed class RecordingSession : IDisposable
             Duration = RecordedDuration,
             StopReason = _stopReason,
             Error = _error,
+            AudioWarning = _audioMuxWarning,
             Success = encodeOk && _error == null && File.Exists(_outputPath),
             EncoderUsed = _encoderUsed,
             CaptureMs = _captureMs,
@@ -493,6 +661,70 @@ public sealed class RecordingSession : IDisposable
         }
 
         Completed?.Invoke(result);
+    }
+
+    private bool AudioHasContent() =>
+        (!string.IsNullOrEmpty(_audioWavePath) && File.Exists(_audioWavePath ?? ""))
+        || (!string.IsNullOrEmpty(_systemAudioWavePath) && File.Exists(_systemAudioWavePath ?? ""));
+
+    /// <summary>用 ffmpeg 探测文件是否含视频流（避免把只有音频的结果当作成功）。</summary>
+    private bool HasVideoStream(string path) => ProbeHasStream(path, "Video:");
+
+    /// <summary>用 ffmpeg 探测文件是否含音频流。</summary>
+    private bool HasAudioStream(string path) => ProbeHasStream(path, "Audio:");
+
+    private bool ProbeHasStream(string path, string streamKind)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = _ffmpegPath, UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardError = true, RedirectStandardOutput = true,
+            };
+            psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(path);
+            psi.ArgumentList.Add("-hide_banner");
+            var p = Process.Start(psi);
+            if (p == null) return false;
+            var err = p.StandardError.ReadToEnd();
+            p.WaitForExit(3000);
+            return err.Contains("Stream #") && err.Contains(streamKind);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private string BuildSysAudioFilter()
+    {
+        // 系统声音为设备原生格式（可能 48000Hz float），统一转换到 44100Hz 16bit 立体声
+        // 以便与麦克风 amix 混音（amix 要求输入格式一致）
+        var parts = new List<string> { "aformat=channel_layouts=stereo:sample_fmts=s16:sample_rates=44100" };
+        if (Math.Abs(_opts.SysVolume - 1.0) > 0.01) parts.Add($"volume={_opts.SysVolume:N3}");
+        if (_opts.SysBass != 0) parts.Add($"bass=g={_opts.SysBass}:f=100:w=0.7");
+        if (_opts.SysTreble != 0) parts.Add($"treble=g={_opts.SysTreble}:f=3000:w=0.7");
+        return string.Join(",", parts);
+    }
+
+    private string BuildMicAudioFilter()
+    {
+        // 麦克风为设备原生格式（可能 48000Hz float），统一转换到 44100Hz 16bit 立体声
+        var parts = new List<string> { "aformat=channel_layouts=stereo:sample_fmts=s16:sample_rates=44100" };
+        if (Math.Abs(_opts.MicVolume - 1.0) > 0.01) parts.Add($"volume={_opts.MicVolume:N3}");
+        if (_opts.MicNoiseGate)
+            // 阈值压到 -60dB：只过滤绝对静音，避免把正常说话（尤其音量偏小）当噪声关掉。
+            // attack 从 200ms 缩短到 20ms，避免吞掉语音开头的辅音。
+            parts.Add("agate=threshold=0.001:attack=20:release=400");
+        return string.Join(",", parts);
+    }
+
+    private string BuildDualChannelFilterComplex(string sysFilter, string micFilter)
+    {
+        // 滤镜可能为空（未启用音效）；ffmpeg 不接受空滤镜名，用 anull 占位保证语法合法
+        string sysPart = string.IsNullOrEmpty(sysFilter) ? "[1:a]anull[sys]" : $"[1:a]{sysFilter}[sys]";
+        string micPart = string.IsNullOrEmpty(micFilter) ? "[2:a]anull[mic]" : $"[2:a]{micFilter}[mic]";
+        return $"{sysPart};{micPart};[sys][mic]amix=inputs=2:duration=shortest:dropout_transition=2[aout]";
     }
 
     public void Pause() => _paused = true;

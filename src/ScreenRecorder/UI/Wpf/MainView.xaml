@@ -1,6 +1,7 @@
 <Window x:Class="ScreenRecorder.UI.Wpf.MainView"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wpf="clr-namespace:ScreenRecorder.UI.Wpf"
         Title="QSrcRecorder" Width="900" SizeToContent="Height" MinHeight="520"
         WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
         Icon="/Assets/QSrcRecorder.ico"
@@ -204,11 +205,11 @@
                                 <Setter TargetName="bd" Property="Background" Value="{StaticResource HoverBg}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#93C5FD"/>
                                 <Setter TargetName="bd" Property="BorderThickness" Value="2"/>
                                 <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSubtle}"/>
-                                <Setter TargetName="chip" Property="Background" Value="{StaticResource Accent}"/>
-                                <Setter TargetName="title" Property="Foreground" Value="{StaticResource Accent}"/>
+                                <Setter TargetName="chip" Property="Background" Value="#60A5FA"/>
+                                <Setter TargetName="title" Property="Foreground" Value="#3B82F6"/>
                                 <Setter TargetName="title" Property="FontWeight" Value="SemiBold"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -258,7 +259,7 @@
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-                <TextBlock Text="QSrcRecorder" FontSize="21" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
+                <TextBlock Text="QSrcRecorder" FontFamily="华文隶书" FontSize="23" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
                 <TextBlock Text="拾光留影 · 轻量录屏" FontSize="12" Foreground="{StaticResource TextTertiary}"
                            Margin="16,7,0,0"/>
             </StackPanel>
@@ -279,30 +280,65 @@
                 <Button x:Name="RecordButton" DockPanel.Dock="Bottom" Height="54" Cursor="Hand" Click="RecordButton_Click">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="bd" Background="{StaticResource Brand}" CornerRadius="10">
-                                <Border.Effect>
-                                    <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.26" Color="#DC2626"/>
-                                </Border.Effect>
+                            <Border x:Name="bd" CornerRadius="10" RenderTransformOrigin="0.5,0.5">
+                                <Border.RenderTransform>
+                                    <ScaleTransform x:Name="btnScale" ScaleX="1" ScaleY="1"/>
+                                </Border.RenderTransform>
+                                <Border.Background>
+                                    <SolidColorBrush x:Name="bgBrush" Color="#DC2626"/>
+                                </Border.Background>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Ellipse Width="11" Height="11" Fill="White" Margin="0,1,10,0" Opacity="0.95"/>
                                     <TextBlock x:Name="txt" Text="开始录制" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
-                                    <Border Background="#FFFFFF" Opacity="0.22" CornerRadius="4" Margin="14,0,0,0" Padding="7,3">
+                                    <Border BorderBrush="#66FFFFFF" BorderThickness="1" CornerRadius="5" Margin="14,0,0,0" Padding="8,3">
                                         <TextBlock Text="F9" Foreground="White" FontSize="11.5" FontWeight="SemiBold"/>
                                     </Border>
                                 </StackPanel>
                             </Border>
                             <ControlTemplate.Triggers>
+                                <!-- 悬停：纯色加深，150ms 平滑过渡 -->
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="bd" Property="Background" Value="{StaticResource BrandHover}"/>
+                                    <Trigger.EnterActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <ColorAnimation Storyboard.TargetName="bgBrush" Storyboard.TargetProperty="Color" To="#B91C1C" Duration="0:0:0.15"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </Trigger.EnterActions>
+                                    <Trigger.ExitActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <ColorAnimation Storyboard.TargetName="bgBrush" Storyboard.TargetProperty="Color" To="#DC2626" Duration="0:0:0.15"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </Trigger.ExitActions>
                                 </Trigger>
+                                <!-- 按下：轻微缩小 + 颜色更深 -->
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="bd" Property="Background" Value="#991C1C"/>
+                                    <Trigger.EnterActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="btnScale" Storyboard.TargetProperty="ScaleX" To="0.98" Duration="0:0:0.06"/>
+                                                <DoubleAnimation Storyboard.TargetName="btnScale" Storyboard.TargetProperty="ScaleY" To="0.98" Duration="0:0:0.06"/>
+                                                <ColorAnimation Storyboard.TargetName="bgBrush" Storyboard.TargetProperty="Color" To="#9C1A1A" Duration="0:0:0.06"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </Trigger.EnterActions>
+                                    <Trigger.ExitActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="btnScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.1"/>
+                                                <DoubleAnimation Storyboard.TargetName="btnScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.1"/>
+                                                <ColorAnimation Storyboard.TargetName="bgBrush" Storyboard.TargetProperty="Color" To="#DC2626" Duration="0:0:0.1"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </Trigger.ExitActions>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Button.Template>
                 </Button>
-                <StackPanel Margin="0,0,0,20">
+                <StackPanel Margin="0,0,0,10">
                     <RadioButton x:Name="ModeFull" Style="{StaticResource ModeCard}" IsChecked="True"
                                  Content="全屏录制" ToolTip="整个显示器" Tag="{StaticResource IconMonitor}" Checked="Mode_Changed"/>
                     <RadioButton x:Name="ModeRegion" Style="{StaticResource ModeCard}"
@@ -316,7 +352,7 @@
             <StackPanel Grid.Column="2" Margin="0,0,0,2">
 
                 <!-- 录制来源 -->
-                <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <Border Style="{StaticResource Card}" Margin="0,0,0,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -342,7 +378,7 @@
                 </Border>
 
                 <!-- 参数 -->
-                <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <Border Style="{StaticResource Card}" Margin="0,0,0,10">
                     <StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -365,9 +401,201 @@
                                 <ComboBox x:Name="CboQuality"/>
                             </StackPanel>
                         </Grid>
-                        <StackPanel Margin="0,14,0,0">
+                        <StackPanel Margin="0,10,0,0">
                             <TextBlock Style="{StaticResource FieldLabel}" Text="编码器"/>
                             <ComboBox x:Name="CboEncoder"/>
+                        </StackPanel>
+                        <StackPanel Margin="0,10,0,0">
+                            <CheckBox x:Name="ChkAudioRecord" Content="同时录制麦克风声音" FontSize="12.5"
+                                      Foreground="{StaticResource TextPrimary}" Cursor="Hand"
+                                      Checked="AudioRecord_Changed" Unchecked="AudioRecord_Changed"/>
+                            <TextBlock x:Name="AudioStatusText" FontSize="11.5" Margin="0,4,0,0"
+                                       Foreground="{StaticResource TextTertiary}" Visibility="Collapsed"/>
+                            <CheckBox x:Name="ChkSystemAudioRecord" Content="同时录制系统声音" FontSize="12.5"
+                                      Foreground="{StaticResource TextPrimary}" Cursor="Hand" Margin="0,6,0,0"
+                                      Checked="SystemAudioRecord_Changed" Unchecked="SystemAudioRecord_Changed"/>
+                            <!-- 音效调节折叠开关 -->
+                            <DockPanel Margin="0,8,0,0">
+                                <Button x:Name="BtnAudioEffectToggle" Style="{StaticResource BtnSecondary}"
+                                        DockPanel.Dock="Right" Height="26" Width="70" Padding="0"
+                                        Click="AudioEffectToggle_Click">
+                                    <TextBlock x:Name="AudioEffectToggleText" Text="音效 ▾" FontSize="11.5"/>
+                                </Button>
+                                <TextBlock Text="音效调节" FontSize="12" Foreground="{StaticResource TextSecondary}"
+                                           VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <!-- 音效面板（默认收起，点击展开） -->
+                            <Border x:Name="AudioEffectPanel" BorderBrush="{StaticResource FieldBorder}"
+                                    BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,6,0,0"
+                                    Background="#FAFAFA" Visibility="Collapsed">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <!-- 麦克风列 -->
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="麦克风" FontSize="11.5" Foreground="{StaticResource TextSecondary}"
+                                                       Margin="0,0,0,3"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="34"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Slider x:Name="SldMicVolume" Minimum="0.1" Maximum="5.0" Value="1.0"
+                                                        TickFrequency="0.1" IsSnapToTickEnabled="True" Margin="0,0,6,0"
+                                                        Height="22" VerticalAlignment="Center" SmallChange="0.1" LargeChange="0.5"/>
+                                                <TextBlock x:Name="MicVolText" Grid.Column="1" Text="1.0×" FontSize="11" TextAlignment="Right"
+                                                           Foreground="{StaticResource TextTertiary}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock Text="降噪门" FontSize="11" Foreground="{StaticResource TextTertiary}"
+                                                           Margin="0,0,3,0" VerticalAlignment="Center"/>
+                                                <CheckBox x:Name="ChkMicNoiseGate" Content="开" FontSize="11.5"
+                                                          Foreground="{StaticResource TextPrimary}" Cursor="Hand"
+                                                          Checked="MicNoiseGate_Changed" Unchecked="MicNoiseGate_Changed"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <!-- 系统声音列 -->
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="系统声音" FontSize="11.5" Foreground="{StaticResource TextSecondary}"
+                                                       Margin="0,0,0,3"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="34"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Slider x:Name="SldSysVolume" Minimum="0.1" Maximum="5.0" Value="1.0"
+                                                        TickFrequency="0.1" IsSnapToTickEnabled="True" Margin="0,0,6,0"
+                                                        Height="22" VerticalAlignment="Center" SmallChange="0.1" LargeChange="0.5"/>
+                                                <TextBlock x:Name="SysVolText" Grid.Column="1" Text="1.0×" FontSize="11" TextAlignment="Right"
+                                                           Foreground="{StaticResource TextTertiary}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock Text="低音" FontSize="11" Foreground="{StaticResource TextTertiary}"
+                                                           Margin="0,0,3,0" VerticalAlignment="Center"/>
+                                                <Button x:Name="BtnBassDown" Content="−" Width="20" Height="20" Padding="0"
+                                                        FontSize="11" Cursor="Hand" Click="BtnBassDown_Click"/>
+                                                <TextBlock x:Name="SysBassText" Text="0" FontSize="11" Width="16"
+                                                           Foreground="{StaticResource TextSecondary}" TextAlignment="Center"
+                                                           VerticalAlignment="Center"/>
+                                                <Button x:Name="BtnBassUp" Content="+" Width="20" Height="20" Padding="0"
+                                                        FontSize="11" Cursor="Hand" Click="BtnBassUp_Click"/>
+                                                <TextBlock Text="高音" FontSize="11" Foreground="{StaticResource TextTertiary}"
+                                                           Margin="8,0,3,0" VerticalAlignment="Center"/>
+                                                <Button x:Name="BtnTrebleDown" Content="−" Width="20" Height="20" Padding="0"
+                                                        FontSize="11" Cursor="Hand" Click="BtnTrebleDown_Click"/>
+                                                <TextBlock x:Name="SysTrebleText" Text="0" FontSize="11" Width="16"
+                                                           Foreground="{StaticResource TextSecondary}" TextAlignment="Center"
+                                                           VerticalAlignment="Center"/>
+                                                <Button x:Name="BtnTrebleUp" Content="+" Width="20" Height="20" Padding="0"
+                                                        FontSize="11" Cursor="Hand" Click="BtnTrebleUp_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Margin="0,10,0,0">
+                            <CheckBox x:Name="ChkMouseHighlight" Content="鼠标跟随圆（常驻高亮）" FontSize="12.5"
+                                      Foreground="{StaticResource TextPrimary}" Cursor="Hand" Margin="0,0,0,6"
+                                      Checked="MouseHighlight_Changed" Unchecked="MouseHighlight_Changed"/>
+                            <CheckBox x:Name="ChkClickHighlight" Content="鼠标点击高亮" FontSize="12.5"
+                                      Foreground="{StaticResource TextPrimary}" Cursor="Hand"
+                                      Checked="ClickHighlight_Changed" Unchecked="ClickHighlight_Changed"/>
+                            <StackPanel x:Name="ColorRow" Margin="2,8,0,0">
+                                <DockPanel>
+                                    <Button x:Name="BtnColorToggle" Style="{StaticResource BtnSecondary}" Height="26"
+                                            DockPanel.Dock="Left" Padding="10,0" Click="ColorToggle_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="ColorDot" Width="12" Height="12" CornerRadius="6"
+                                                    BorderBrush="#E2E8F0" BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="ColorToggleText" Text="颜色 ▾" FontSize="12"
+                                                       Foreground="{StaticResource TextPrimary}" Margin="7,0,0,0"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <!-- 常用色：常驻显示，点击即用 -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="Preset1" Tag="#DC2626" Background="#DC2626" Click="Preset_Click" Cursor="Hand"
+                                                Width="20" Height="20" Margin="8,0,5,0" ToolTip="#DC2626 红" BorderBrush="#E2E8F0" BorderThickness="1.5">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="1.5"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="Preset2" Tag="#F97316" Background="#F97316" Click="Preset_Click" Cursor="Hand"
+                                                Width="20" Height="20" Margin="0,0,5,0" ToolTip="#F97316 橙" BorderBrush="#E2E8F0" BorderThickness="1.5">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="1.5"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="Preset3" Tag="#FACC15" Background="#FACC15" Click="Preset_Click" Cursor="Hand"
+                                                Width="20" Height="20" Margin="0,0,5,0" ToolTip="#FACC15 黄" BorderBrush="#E2E8F0" BorderThickness="1.5">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="1.5"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="Preset4" Tag="#22C55E" Background="#22C55E" Click="Preset_Click" Cursor="Hand"
+                                                Width="20" Height="20" Margin="0,0,5,0" ToolTip="#22C55E 绿" BorderBrush="#E2E8F0" BorderThickness="1.5">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="1.5"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="Preset5" Tag="#06B6D4" Background="#06B6D4" Click="Preset_Click" Cursor="Hand"
+                                                Width="20" Height="20" Margin="0,0,5,0" ToolTip="#06B6D4 青" BorderBrush="#E2E8F0" BorderThickness="1.5">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="1.5"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="Preset6" Tag="#3B82F6" Background="#3B82F6" Click="Preset_Click" Cursor="Hand"
+                                                Width="20" Height="20" Margin="0,0,5,0" ToolTip="#3B82F6 蓝" BorderBrush="#E2E8F0" BorderThickness="1.5">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="1.5"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="Preset7" Tag="#8B5CF6" Background="#8B5CF6" Click="Preset_Click" Cursor="Hand"
+                                                Width="20" Height="20" Margin="0,0,5,0" ToolTip="#8B5CF6 紫" BorderBrush="#E2E8F0" BorderThickness="1.5">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="1.5"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="Preset8" Tag="#111827" Background="#111827" Click="Preset_Click" Cursor="Hand"
+                                                Width="20" Height="20" ToolTip="#111827 黑" BorderBrush="#E2E8F0" BorderThickness="1.5">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" BorderThickness="1.5"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </StackPanel>
+                                </DockPanel>
+                                <wpf:ColorWheelControl x:Name="ColorWheel" Margin="0,10,0,0"
+                                                       ColorChanged="ColorWheel_ColorChanged"/>
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                 </Border>

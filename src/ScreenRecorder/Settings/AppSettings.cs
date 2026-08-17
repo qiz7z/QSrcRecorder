@@ -13,6 +13,30 @@ public sealed class AppSettings
     public int Quality { get; set; } = 1;     // QualityPreset 下标
     public int Encoder { get; set; } = 0;     // EncoderKind 下标
     public string OutputFolder { get; set; } = "";
+    /// <summary>录制时显示鼠标点击高亮光圈。</summary>
+    public bool ClickHighlight { get; set; } = true;
+    /// <summary>点击高亮光圈颜色（#RRGGBB）。</summary>
+    public string ClickHighlightColor { get; set; } = "#DC2626";
+    /// <summary>录制时鼠标周围常驻半透明跟随圆。</summary>
+    public bool MouseHighlight { get; set; } = true;
+    /// <summary>颜色选择色环是否展开。</summary>
+    public bool ColorWheelExpanded { get; set; }
+    /// <summary>同时录制麦克风声音（音频单独合成，需几秒钟处理时间）。</summary>
+    public bool RecordAudio { get; set; }
+    /// <summary>同时录制系统声音（WASAPI 回环）。与麦克风独立合成。</summary>
+    public bool RecordSystemAudio { get; set; }
+    /// <summary>麦克风音量倍率（0.1 ~ 5.0，默认 1.0）。</summary>
+    public double MicVolume { get; set; } = 1.0;
+    /// <summary>系统声音音量倍率（0.1 ~ 5.0，默认 1.0）。</summary>
+    public double SysVolume { get; set; } = 1.0;
+    /// <summary>麦克风降噪门（过滤低于阈值的环境噪音）。</summary>
+    public bool MicNoiseGate { get; set; }
+    /// <summary>音效调节面板是否展开。</summary>
+    public bool AudioEffectExpanded { get; set; }
+    /// <summary>系统声音低音增强（-5 ~ +5 dB，默认 0）。</summary>
+    public int SysBass { get; set; }
+    /// <summary>系统声音高音增强（-5 ~ +5 dB，默认 0）。</summary>
+    public int SysTreble { get; set; }
 
     private static string FolderPath
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QSrcRecorder");

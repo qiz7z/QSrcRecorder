@@ -19,8 +19,12 @@ public sealed class RecordingBarForm : Form
     private readonly Label _lblTime = new();
     private readonly Button _btnPause = new();
     private readonly Button _btnStop = new();
+    private readonly Button _btnHide = new();
     private readonly System.Windows.Forms.Timer _timer = new();
     private long _lastActiveTick;
+
+    /// <summary>用户点击"隐藏"按钮：把悬浮条收进系统托盘（录制画面因此干净）。</summary>
+    public event Action? HideRequested;
 
     public RecordingBarForm(RecordingSession session)
     {
@@ -58,7 +62,12 @@ public sealed class RecordingBarForm : Form
         _btnStop.FlatAppearance.BorderColor = Theme.Brand;
         _btnStop.Click += (_, _) => _session.Stop();
 
-        Controls.AddRange(new Control[] { _lblDot, _lblTime, _btnPause, _btnStop });
+        _btnHide.Text = "隐藏";
+        Theme.StyleFlatButton(_btnHide);
+        new ToolTip().SetToolTip(_btnHide, "隐藏到系统托盘（录制画面不显示悬浮条）");
+        _btnHide.Click += (_, _) => HideRequested?.Invoke();
+
+        Controls.AddRange(new Control[] { _lblDot, _lblTime, _btnPause, _btnStop, _btnHide });
 
         _timer.Interval = 250;
         _timer.Tick += (_, _) => RefreshStatus();
@@ -85,13 +94,15 @@ public sealed class RecordingBarForm : Form
         var timeSize = TextRenderer.MeasureText("00:00", _lblTime.Font);
         var pauseSize = TextRenderer.MeasureText(_btnPause.Text, _btnPause.Font);
         var stopSize = TextRenderer.MeasureText(_btnStop.Text, _btnStop.Font);
+        var hideSize = TextRenderer.MeasureText(_btnHide.Text, _btnHide.Font);
 
         int pad = Scale(10);
         int gap = Scale(8);
-        int btnH = Math.Max(pauseSize.Height, stopSize.Height) + Scale(10);
+        int btnH = Math.Max(pauseSize.Height, Math.Max(stopSize.Height, hideSize.Height)) + Scale(10);
         int barH = btnH + Scale(16);
         int btnPauseW = pauseSize.Width + Scale(24);
         int btnStopW = stopSize.Width + Scale(24);
+        int btnHideW = hideSize.Width + Scale(24);
 
         int x = pad;
         _lblDot.SetBounds(x, 0, dotSize.Width, barH);
@@ -101,7 +112,9 @@ public sealed class RecordingBarForm : Form
         _btnPause.SetBounds(x, (barH - btnH) / 2, btnPauseW, btnH);
         x += btnPauseW + gap;
         _btnStop.SetBounds(x, (barH - btnH) / 2, btnStopW, btnH);
-        x += btnStopW + pad;
+        x += btnStopW + gap;
+        _btnHide.SetBounds(x, (barH - btnH) / 2, btnHideW, btnH);
+        x += btnHideW + pad;
 
         Size = new Size(x, barH);
 

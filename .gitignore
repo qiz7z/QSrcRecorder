@@ -13,3 +13,4 @@ tools/IconGen/out/
 tools/IconGen/*.png
 tools/IconGen/*.csx
 *.log
+.zcode/

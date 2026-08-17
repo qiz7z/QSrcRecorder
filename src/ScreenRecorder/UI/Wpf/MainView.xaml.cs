@@ -24,10 +24,16 @@ public partial class MainView : Window
 
     private RecordingSession? _session;
     private RecordingBarForm? _bar;
+    private ScreenRecorder.Overlays.MouseHighlightOverlay? _spot;
     private RecordingOptions? _lastOptions;
     private bool _softwareRetryUsed;
     private Win32Native.WinWindowInfo? _window;
     private AppSettings _settings = new();
+    private bool _loadingSettings; // 初始化期间阻止事件处理器触发 SaveSettings
+    private readonly ScreenRecorder.Overlays.ClickHighlightEngine _clickEngine = new();
+    private System.Windows.Forms.NotifyIcon? _tray;
+    private System.Windows.Forms.ContextMenuStrip? _trayMenu;
+    private bool _trayVisible;
 
     public MainView()
     {
@@ -52,8 +58,124 @@ public partial class MainView : Window
             RefreshScreens();
             LoadSettings();
             _ = DetectEncoderAsync();
+            _clickEngine.Start();
+            InitTray();
         };
-        Closing += (_, _) => SaveSettings();
+        Closing += (_, _) =>
+        {
+            SaveSettings();
+            _clickEngine.Stop();
+            _tray?.Dispose();
+            _tray = null;
+        };
+        StateChanged += (_, _) =>
+        {
+            // 最小化 → 隐藏到托盘（录制中悬浮条一起隐藏，画面干净）
+            if (WindowState == WindowState.Minimized && !_trayVisible)
+            {
+                _trayVisible = true;
+                _tray!.Visible = true;
+                Hide();
+                _bar?.Hide();
+            }
+        };
+    }
+
+    // ── 系统托盘 ─────────────────────────────────
+    private System.Windows.Forms.ToolStripMenuItem? _trayPauseItem;
+    private System.Windows.Forms.ToolStripMenuItem? _trayStopItem;
+
+    private void InitTray()
+    {
+        _trayMenu = new System.Windows.Forms.ContextMenuStrip();
+        _trayPauseItem = new System.Windows.Forms.ToolStripMenuItem("暂停");
+        _trayPauseItem.Click += (_, _) => TogglePause();
+        _trayStopItem = new System.Windows.Forms.ToolStripMenuItem("结束录制");
+        _trayStopItem.Click += (_, _) => ToggleRecord();
+        var miShow = new System.Windows.Forms.ToolStripMenuItem("显示主界面");
+        miShow.Click += (_, _) => RestoreFromTray();
+        var miExit = new System.Windows.Forms.ToolStripMenuItem("退出");
+        miExit.Click += (_, _) => ExitApp();
+        _trayMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { _trayPauseItem, _trayStopItem, miShow, new System.Windows.Forms.ToolStripSeparator(), miExit });
+        // 菜单打开时按录制状态刷新"暂停/结束"可用性与文案
+        _trayMenu.Opening += (_, _) => RefreshTrayMenu();
+
+        _tray = new System.Windows.Forms.NotifyIcon
+        {
+            Text = "QSrcRecorder 拾光留影",
+            Icon = System.Drawing.Icon.ExtractAssociatedIcon(
+                System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!,
+            ContextMenuStrip = _trayMenu,
+            Visible = false,
+        };
+        // 左键点击托盘：显示计时器悬浮条（未录制则显示主界面）
+        _tray.MouseClick += (_, e) =>
+        {
+            if (e.Button == System.Windows.Forms.MouseButtons.Left)
+            {
+                if (_session is { IsRecording: true })
+                    ShowBarFromTray();
+                else
+                    RestoreFromTray();
+            }
+        };
+    }
+
+    private void RefreshTrayMenu()
+    {
+        bool recording = _session is { IsRecording: true };
+        if (_trayPauseItem != null)
+        {
+            _trayPauseItem.Enabled = recording;
+            _trayPauseItem.Text = _session is { IsPaused: true } ? "继续" : "暂停";
+        }
+        if (_trayStopItem != null)
+        {
+            _trayStopItem.Enabled = recording;
+            _trayStopItem.Text = "结束录制";
+        }
+    }
+
+    private void RestoreFromTray()
+    {
+        _trayVisible = false;
+        if (_tray != null)
+            _tray.Visible = false;
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+        // 录制中恢复窗口时，悬浮条也恢复（方便控制录制）
+        if (_session is { IsRecording: true } && _bar != null)
+            _bar.Show();
+    }
+
+    /// <summary>托盘左键/菜单"显示计时器"：恢复悬浮条，托盘图标保留以便随时再隐藏。</summary>
+    private void ShowBarFromTray()
+    {
+        if (_session is not { IsRecording: true } || _bar == null)
+            return;
+        _bar.Show();
+        _trayVisible = false; // 悬浮条已恢复，录制结束走正常提示
+        // 托盘图标保留（录制期间可随时再点隐藏）
+        if (_tray != null)
+            _tray.Visible = true;
+        UpdateTrayText("正在录制…");
+    }
+
+    private void ExitApp()
+    {
+        try
+        {
+            _session?.Stop();
+        }
+        catch
+        {
+            // 停止失败也照常退出
+        }
+        _clickEngine.Stop();
+        _tray?.Dispose();
+        _tray = null;
+        Close();
     }
 
     // ── 热键（挂在 WPF 窗口句柄上） ────────────────
@@ -149,7 +271,12 @@ public partial class MainView : Window
         try
         {
             var ffmpeg = FfmpegVideoEncoder.LocateFfmpeg();
-            _session = new RecordingSession(opts, ffmpeg);
+            // RecordingSession 构造函数：(opts, ffmpegPath, clickEngine, clickColorHex, mouseHighlight)
+            // RecordAudio 通过 opts 传入，不在这里传
+            _session = new RecordingSession(opts, ffmpeg,
+                _settings.ClickHighlight ? _clickEngine : null,
+                _settings.ClickHighlightColor,
+                _settings.MouseHighlight);
             _session.Completed += OnSessionCompleted;
             _session.Start();
         }
@@ -163,9 +290,48 @@ public partial class MainView : Window
 
         SaveSettings();
         Hide();
-        _bar = new RecordingBarForm(_session);
-        _bar.Show();
+        // 托盘模式（窗口已隐藏）录制时不显示悬浮条——画面干净；
+        // 正常模式录制时显示悬浮条，可点悬浮条"隐藏"按钮收进托盘
+        if (!_trayVisible)
+        {
+            _bar = new RecordingBarForm(_session);
+            _bar.HideRequested += OnBarHideRequested;
+            _bar.Show();
+        }
         SetStatus("正在录制…");
+        UpdateTrayText("正在录制…");
+
+        // 鼠标跟随圆：屏幕实时覆盖层（全屏/区域模式会随画面录进成片；窗口模式由软件合帧兜底）
+        if (_settings.MouseHighlight)
+        {
+            try
+            {
+                _spot = new ScreenRecorder.Overlays.MouseHighlightOverlay();
+                _spot.SetColor(_settings.ClickHighlightColor);
+                _spot.Show();
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "spot_diag.log"),
+                    $"[{DateTime.Now:HH:mm:ss.fff}] _spot 创建失败: {ex}\n");
+            }
+        }
+    }
+
+    private void UpdateTrayText(string text)
+    {
+        if (_tray != null)
+            _tray.Text = "QSrcRecorder · " + text;
+    }
+
+    /// <summary>悬浮条"隐藏"按钮：收进托盘，录制画面干净；托盘可恢复。</summary>
+    private void OnBarHideRequested()
+    {
+        _bar?.Hide();
+        _trayVisible = true;
+        if (_tray != null)
+            _tray.Visible = true;
+        UpdateTrayText("正在录制…（悬浮条已隐藏，双击托盘恢复）");
     }
 
     private RecordingOptions? BuildOptions()
@@ -184,6 +350,13 @@ public partial class MainView : Window
                 _ => EncoderKind.Auto,
             },
             OutputFolder = folder,
+            RecordAudio = _settings.RecordAudio,
+            RecordSystemAudio = _settings.RecordSystemAudio,
+            MicVolume = _settings.MicVolume,
+            SysVolume = _settings.SysVolume,
+            MicNoiseGate = _settings.MicNoiseGate,
+            SysBass = _settings.SysBass,
+            SysTreble = _settings.SysTreble,
         };
 
         if (ModeWindow.IsChecked == true)
@@ -222,6 +395,8 @@ public partial class MainView : Window
         {
             _bar?.Close();
             _bar = null;
+            _spot?.Close();
+            _spot = null;
             _session = null;
 
             // 双显卡笔记本上硬编可能间歇不可用：刚起步失败时自动改软编按原参数重录一次
@@ -234,6 +409,15 @@ public partial class MainView : Window
                 return;
             }
 
+            // 托盘模式下结束录制：不弹窗不打扰，状态通过托盘提示
+            if (_trayVisible)
+            {
+                UpdateTrayText(r.Success ? "录制完成" : "录制失败");
+                if (!r.Success)
+                    _tray?.ShowBalloonTip(3000, "QSrcRecorder", "录制失败：" + (r.Error ?? r.StopReason ?? "未知原因"), System.Windows.Forms.ToolTipIcon.Warning);
+                return;
+            }
+
             Show();
             Activate();
 
@@ -243,6 +427,8 @@ public partial class MainView : Window
                 var message = $"录制完成，是否打开所在文件夹？\n{r.OutputPath}";
                 if (r.StopReason != null)
                     message = r.StopReason + "\n\n" + message;
+                if (!string.IsNullOrEmpty(r.AudioWarning))
+                    message = "⚠ " + r.AudioWarning + "\n\n" + message;
                 if (MessageBox.Show(this, message, "QSrcRecorder",
                         MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
                 {
@@ -302,6 +488,180 @@ public partial class MainView : Window
         TxtFolder.ToolTip = TxtFolder.Text;
     }
 
+    // ── 点击高亮设置 ─────────────────────────────
+    private void ClickHighlight_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        bool on = ChkClickHighlight.IsChecked == true;
+        _settings.ClickHighlight = on;
+        RefreshColorRow();
+        SaveSettings();
+    }
+
+    private void MouseHighlight_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        bool on = ChkMouseHighlight.IsChecked == true;
+        _settings.MouseHighlight = on;
+        RefreshColorRow();
+        SaveSettings();
+    }
+
+    private void AudioRecord_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        _settings.RecordAudio = ChkAudioRecord.IsChecked == true;
+        SaveSettings();
+        AudioStatusText.Visibility = _settings.RecordAudio ? Visibility.Visible : Visibility.Collapsed;
+        if (_settings.RecordAudio)
+            AudioStatusText.Text = "● 开启麦克风录制（结束合成时可能需几秒钟）";
+    }
+
+    private void SystemAudioRecord_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        _settings.RecordSystemAudio = ChkSystemAudioRecord.IsChecked == true;
+        SaveSettings();
+    }
+
+    // ── 音效调节 ──────────────────────────────────
+    private void SldMicVolume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_loadingSettings) return;
+        _settings.MicVolume = Math.Round(e.NewValue, 1);
+        MicVolText.Text = $"音量 {_settings.MicVolume:N1}×";
+        SaveSettings();
+    }
+
+    private void SldSysVolume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_loadingSettings) return;
+        _settings.SysVolume = Math.Round(e.NewValue, 1);
+        SysVolText.Text = $"音量 {_settings.SysVolume:N1}×";
+        SaveSettings();
+    }
+
+    private void MicNoiseGate_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        _settings.MicNoiseGate = ChkMicNoiseGate.IsChecked == true;
+        SaveSettings();
+    }
+
+    private void BtnBassDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        _settings.SysBass = Math.Max(-5, _settings.SysBass - 1);
+        SysBassText.Text = _settings.SysBass.ToString();
+        SaveSettings();
+    }
+
+    private void BtnBassUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        _settings.SysBass = Math.Min(5, _settings.SysBass + 1);
+        SysBassText.Text = _settings.SysBass.ToString();
+        SaveSettings();
+    }
+
+    private void BtnTrebleDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        _settings.SysTreble = Math.Max(-5, _settings.SysTreble - 1);
+        SysTrebleText.Text = _settings.SysTreble.ToString();
+        SaveSettings();
+    }
+
+    private void BtnTrebleUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        _settings.SysTreble = Math.Min(5, _settings.SysTreble + 1);
+        SysTrebleText.Text = _settings.SysTreble.ToString();
+        SaveSettings();
+    }
+
+    private void RefreshColorRow()
+    {
+        ColorRow.Visibility = (_settings.ClickHighlight || _settings.MouseHighlight)
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ColorWheel_ColorChanged(object? sender, EventArgs e)
+    {
+        if (ColorWheel is { } wheel)
+        {
+            _settings.ClickHighlightColor = wheel.HexValue;
+            SaveSettings();
+            UpdateColorDot(wheel.HexValue);
+            UpdatePresetSelection(wheel.HexValue);
+        }
+    }
+
+    private void Preset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: string hex })
+            return;
+        _settings.ClickHighlightColor = hex;
+        SaveSettings();
+        UpdateColorDot(hex);
+        UpdatePresetSelection(hex);
+        ColorWheel.SetColor(hex); // 色环指示点同步
+    }
+
+    private void UpdatePresetSelection(string hex)
+    {
+        foreach (var btn in new[]
+                 {
+                     Preset1, Preset2, Preset3, Preset4,
+                     Preset5, Preset6, Preset7, Preset8,
+                 })
+        {
+            bool selected = string.Equals(btn.Tag as string, hex, StringComparison.OrdinalIgnoreCase);
+            btn.BorderBrush = new System.Windows.Media.SolidColorBrush(
+                selected
+                    ? System.Windows.Media.Color.FromRgb(0x0F, 0x17, 0x2A) // 深色描边 = 选中
+                    : System.Windows.Media.Color.FromRgb(0xE2, 0xE8, 0xF0));
+            btn.BorderThickness = selected ? new Thickness(2) : new Thickness(1.5);
+        }
+    }
+
+    private void ColorToggle_Click(object sender, RoutedEventArgs e)
+    {
+        bool expanded = ColorWheel.Visibility != Visibility.Visible;
+        _settings.ColorWheelExpanded = expanded;
+        SaveSettings();
+        ApplyColorWheelState(expanded);
+    }
+
+    private void ApplyColorWheelState(bool expanded)
+    {
+        ColorWheel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        ColorToggleText.Text = expanded ? "颜色 ▴" : "颜色 ▾";
+    }
+
+    private void AudioEffectToggle_Click(object sender, RoutedEventArgs e)
+    {
+        bool expanded = AudioEffectPanel.Visibility != Visibility.Visible;
+        _settings.AudioEffectExpanded = expanded;
+        SaveSettings();
+        ApplyAudioEffectState(expanded);
+    }
+
+    private void ApplyAudioEffectState(bool expanded)
+    {
+        AudioEffectPanel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        AudioEffectToggleText.Text = expanded ? "音效 ▴" : "音效 ▾";
+    }
+
+    private void UpdateColorDot(string hex)
+    {
+        if (ColorDot is not { } dot)
+            return;
+        var (b, g, r) = Overlays.ClickHighlightEngine.ParseColor(hex);
+        dot.Background = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(r, g, b));
+    }
+
     private void OpenFolder_Click(object sender, RoutedEventArgs e)
     {
         if (Directory.Exists(TxtFolder.Text))
@@ -326,6 +686,7 @@ public partial class MainView : Window
 
     private void LoadSettings()
     {
+        _loadingSettings = true;
         _settings = AppSettings.Load();
         (_settings.Mode switch
         {
@@ -345,14 +706,35 @@ public partial class MainView : Window
         TxtFolder.Text = string.IsNullOrWhiteSpace(_settings.OutputFolder)
             ? OutputFile.DefaultFolder()
             : _settings.OutputFolder;
+        ChkClickHighlight.IsChecked = _settings.ClickHighlight;
+        ChkMouseHighlight.IsChecked = _settings.MouseHighlight;
+        ColorRow.Visibility = (_settings.ClickHighlight || _settings.MouseHighlight)
+            ? Visibility.Visible : Visibility.Collapsed;
+        ApplyColorWheelState(_settings.ColorWheelExpanded);
+        ApplyAudioEffectState(_settings.AudioEffectExpanded);
+        ColorWheel.SetColor(_settings.ClickHighlightColor);
+        UpdateColorDot(_settings.ClickHighlightColor);
+        UpdatePresetSelection(_settings.ClickHighlightColor);
+        ChkAudioRecord.IsChecked = _settings.RecordAudio;
+        ChkSystemAudioRecord.IsChecked = _settings.RecordSystemAudio;
+        SldMicVolume.Value = _settings.MicVolume;
+        SldSysVolume.Value = _settings.SysVolume;
+        MicVolText.Text = $"音量 {_settings.MicVolume:N1}×";
+        SysVolText.Text = $"音量 {_settings.SysVolume:N1}×";
+        ChkMicNoiseGate.IsChecked = _settings.MicNoiseGate;
+        SysBassText.Text = _settings.SysBass.ToString();
+        SysTrebleText.Text = _settings.SysTreble.ToString();
+        SldMicVolume.ValueChanged += (s, e) => SldMicVolume_ValueChanged(s, e);
+        SldSysVolume.ValueChanged += (s, e) => SldSysVolume_ValueChanged(s, e);
         CboFps.SelectionChanged += (_, _) => SaveSettings();
         CboScale.SelectionChanged += (_, _) => SaveSettings();
         CboQuality.SelectionChanged += (_, _) => SaveSettings();
+        _loadingSettings = false;
     }
 
     private void SaveSettings()
     {
-        if (!IsLoaded)
+        if (!IsLoaded || _loadingSettings)
             return;
         _settings.Mode = ModeWindow.IsChecked == true ? "Window"
             : ModeRegion.IsChecked == true ? "Region" : "FullScreen";
@@ -361,6 +743,8 @@ public partial class MainView : Window
         _settings.ScaleIndex = CboScale.SelectedIndex;
         _settings.Quality = CboQuality.SelectedIndex;
         _settings.OutputFolder = TxtFolder.Text.Trim();
+        _settings.RecordAudio = ChkAudioRecord.IsChecked == true;
+        _settings.RecordSystemAudio = ChkSystemAudioRecord.IsChecked == true;
         _settings.Save();
     }
 }

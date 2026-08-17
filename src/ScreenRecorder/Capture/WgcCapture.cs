@@ -74,6 +74,8 @@ internal sealed unsafe class WgcCapture : IDisposable
         {
             // 旧系统不支持该属性，保留系统绘制的边框
         }
+        // 注意：不关闭光标捕获——录屏必须保留鼠标指针（用户操作位置）。
+        // 指针与跟随圆叠加导致的"闪烁感"由死区抑制，而不是移除指针。
         _session.StartCapture();
 
         FrameSize = (poolSize.Width, poolSize.Height);

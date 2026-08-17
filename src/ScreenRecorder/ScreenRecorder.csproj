@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.183" PrivateAssets="all" />
+    <PackageReference Include="NAudio" Version="2.2.0" />
   </ItemGroup>
 
   <ItemGroup>

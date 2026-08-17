@@ -178,3 +178,146 @@ public class RecordingResultTests
         Assert.False(r.IsEarlyEncoderFailure);
     }
 }
+
+public class ClickHighlightTests
+{
+    private static (int BigAlpha, double RippleR, int RippleA) Animate(long t) =>
+        ScreenRecorder.Overlays.ClickHighlightEngine.Animate(0, t);
+
+    [Fact]
+    public void 动画起始_大圆全亮且波纹从圆心开始()
+    {
+        var (big, rr, ra) = Animate(0);
+        Assert.Equal(ScreenRecorder.Overlays.ClickHighlightEngine.BigAlphaStart, big);
+        Assert.Equal(ScreenRecorder.Overlays.ClickHighlightEngine.RippleStartRadius, rr, 1);
+        Assert.Equal(ScreenRecorder.Overlays.ClickHighlightEngine.RippleAlphaStart, ra);
+    }
+
+    [Fact]
+    public void 动画中段_大圆变淡波纹扩大()
+    {
+        var mid = (long)(ScreenRecorder.Overlays.ClickHighlightEngine.DurationMs / 2);
+        var (big, rr, ra) = Animate(mid);
+        Assert.True(big < ScreenRecorder.Overlays.ClickHighlightEngine.BigAlphaStart);
+        Assert.True(rr > ScreenRecorder.Overlays.ClickHighlightEngine.RippleStartRadius);
+        Assert.True(rr <= ScreenRecorder.Overlays.ClickHighlightEngine.RippleEndRadius);
+        Assert.True(ra < ScreenRecorder.Overlays.ClickHighlightEngine.RippleAlphaStart);
+        Assert.True(ra > 0);
+    }
+
+    [Fact]
+    public void 动画结束_返回零即不再绘制()
+    {
+        var (big, rr, ra) = Animate((long)(ScreenRecorder.Overlays.ClickHighlightEngine.DurationMs + 1));
+        Assert.Equal(0, big);
+        Assert.Equal(0, rr);
+        Assert.Equal(0, ra);
+    }
+
+    [Fact]
+    public void 波纹先于大圆结束_波纹归零后大圆仍在淡出()
+    {
+        var t = (long)ScreenRecorder.Overlays.ClickHighlightEngine.RippleDurationMs + 10;
+        var (big, rr, ra) = Animate(t);
+        Assert.Equal(0, rr);
+        Assert.Equal(0, ra);
+        Assert.True(big > 0, "大圆应继续淡出直到总时长结束");
+    }
+
+    [Theory]
+    [InlineData("#DC2626", 0x26, 0x26, 0xDC)]
+    [InlineData("#3B82F6", 0xF6, 0x82, 0x3B)]
+    [InlineData("", 0x26, 0x26, 0xDC)]      // 空 → 默认红
+    [InlineData("xyz", 0x26, 0x26, 0xDC)]   // 非法 → 默认红
+    public void 颜色解析_hex转BGRA(string hex, byte b, byte g, byte r)
+    {
+        var (pb, pg, pr) = ScreenRecorder.Overlays.ClickHighlightEngine.ParseColor(hex);
+        Assert.Equal(b, pb);
+        Assert.Equal(g, pg);
+        Assert.Equal(r, pr);
+    }
+
+    [Fact]
+    public void 全屏模式_坐标减监视器原点再乘缩放()
+    {
+        var rect = new Rectangle(100, 50, 1920, 1080);
+        var (x, y) = ScreenRecorder.Overlays.ClickHighlightEngine.ScreenToFrame(
+            2100, 590, RecordMode.FullScreen, rect, 0.5, null, null);
+        Assert.Equal(1000, x); // (2100-100)*0.5
+        Assert.Equal(270, y);  // (590-50)*0.5
+    }
+
+    [Fact]
+    public void 区域模式_先缩放再减裁剪原点()
+    {
+        var rect = new Rectangle(0, 0, 1920, 1080);
+        var crop = new Rectangle(100, 50, 800, 600);
+        var (x, y) = ScreenRecorder.Overlays.ClickHighlightEngine.ScreenToFrame(
+            500, 300, RecordMode.Region, rect, 1.0, crop, null);
+        Assert.Equal(400, x); // 500-100
+        Assert.Equal(250, y); // 300-50
+    }
+
+    [Fact]
+    public void 窗口模式_使用客户区坐标回调()
+    {
+        var rect = new Rectangle(0, 0, 1920, 1080);
+        var (x, y) = ScreenRecorder.Overlays.ClickHighlightEngine.ScreenToFrame(
+            100, 100, RecordMode.Window, rect, 1.0, null,
+            (sx, sy) => (sx - 10, sy - 20)); // 模拟窗口在屏幕 (10,20)
+        Assert.Equal(90, x);
+        Assert.Equal(80, y);
+    }
+
+    [Fact]
+    public void 画圆环_中心像素被写入混合颜色()
+    {
+        // 帧 100x60，圆环中心 (50,30)，半径 10 → 中心是环上点（d=0 不在环带）？
+        // 用半径 10 环带 inner=7.2：测试取环上点 (50+9, 30) 即 d=9 在 [7.2,10]
+        var frame = new byte[100 * 60 * 4];
+        ScreenRecorder.Overlays.ClickHighlightEngine.DrawCircleRing(
+            frame, 100, 60, 400, 50, 30, 10, 200, 0x26, 0x26, 0xDC);
+
+        int i = (30 * 400) + (59 * 4); // (59,30)：d=9 在环带上
+        Assert.True(frame[i + 2] > 0x80, "R 分量应显著混合（红色通道提升）");
+    }
+}
+
+public class MouseHighlightFillTests
+{
+    [Fact]
+    public void 填充圆_中心像素被混合上颜色()
+    {
+        var frame = new byte[100 * 60 * 4];
+        ScreenRecorder.Overlays.ClickHighlightEngine.DrawCircleFill(
+            frame, 100, 60, 400, 50, 30, 10, 110, 230, 0x26, 0x26, 0xDC);
+
+        int i = (30 * 400) + (50 * 4); // 圆心
+        // fillAlpha=110/255 → R = 0xDC*110/255 ≈ 95
+        Assert.Equal(94, frame[i + 2]);
+    }
+
+    [Fact]
+    public void 填充圆_边缘描边比中心更浓()
+    {
+        var frame = new byte[100 * 60 * 4];
+        ScreenRecorder.Overlays.ClickHighlightEngine.DrawCircleFill(
+            frame, 100, 60, 400, 50, 30, 10, 110, 230, 0x26, 0x26, 0xDC);
+
+        int center = (30 * 400) + (50 * 4);
+        int edge = (30 * 400) + (59 * 4);   // 距圆心 9px，处于边缘描边带
+        int outside = (30 * 400) + (20 * 4); // 距圆心 30px，圆外
+        Assert.True(frame[edge + 2] > frame[center + 2], "边缘 alpha 更高 → R 更浓");
+        Assert.Equal(0, frame[outside + 2]); // 圆外不混合
+    }
+
+    [Fact]
+    public void 填充圆_零透明度_不改动像素()
+    {
+        var frame = new byte[100 * 60 * 4];
+        ScreenRecorder.Overlays.ClickHighlightEngine.DrawCircleFill(
+            frame, 100, 60, 400, 50, 30, 10, 0, 0, 0xFF, 0, 0);
+        int i = (30 * 400) + (50 * 4);
+        Assert.Equal(0, frame[i + 2]);
+    }
+}
