@@ -242,7 +242,8 @@ public partial class MainView : Window
     // ── 录制流程 ───────────────────────────────────
     private void RecordButton_Click(object sender, RoutedEventArgs e) => ToggleRecord();
 
-    private void ToggleRecord()
+    /// <summary>必须用 async void，确保异常能传播到 DispatcherUnhandledException 并弹窗。</summary>
+    private async void ToggleRecord()
     {
         if (_starting)
             return;
@@ -251,7 +252,7 @@ public partial class MainView : Window
             _session.Stop();
             return;
         }
-        _ = StartRecordingAsync();
+        await StartRecordingAsync();
     }
 
     private void TogglePause()
