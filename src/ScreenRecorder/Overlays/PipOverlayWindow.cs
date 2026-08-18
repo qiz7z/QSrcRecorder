@@ -2,10 +2,12 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ScreenRecorder.Capture;
+using ScreenRecorder.Interop;
 
 namespace ScreenRecorder.Overlays;
 
@@ -38,6 +40,15 @@ public sealed class PipOverlayWindow : Window
         ShowInTaskbar = false;
         ShowActivated = false;
         ResizeMode = ResizeMode.NoResize;
+
+        // 排除 WGC 捕获：此窗口不会出现在录制的成片中
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+                Win32Native.ExcludeFromCapture(hwnd);
+        }
+        catch { /* 忽略，旧系统不支持 */ }
 
         _dpiScale = 1.0;
         try { _dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX; } catch { }
