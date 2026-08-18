@@ -113,6 +113,8 @@ public sealed class PipOverlayWindow : Window
         _dragging = false;
         _dragStart = e.GetPosition(this);
         _winStartLeft = Left;
+        // 拖拽时暂停刷新，避免卡顿
+        _timer.Stop();
         _winStartTop = Top;
         _winStartW = Width;
         _winStartH = Height;
@@ -163,7 +165,10 @@ public sealed class PipOverlayWindow : Window
         ReleaseMouseCapture();
         _dragging = false;
         _resizeEdge = ResizeEdge.None;
-        SetCursor(System.Windows.Input.Cursors.Hand);
+        Cursor = System.Windows.Input.Cursors.Hand;
+        // 拖拽结束，恢复刷新
+        if (_started)
+            _timer.Start();
     }
 
     private void OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
