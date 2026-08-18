@@ -240,11 +240,17 @@ public partial class MainView : Window
     }
 
     // ── 录制流程 ───────────────────────────────────
-    private void RecordButton_Click(object sender, RoutedEventArgs e) => ToggleRecord();
+    private void RecordButton_Click(object sender, RoutedEventArgs e)
+    {
+        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] CLICK\n");
+        try { MessageBox.Show(this, "按钮点击了！开始录制...", "DEBUG", MessageBoxButton.OK); } catch { }
+        ToggleRecord();
+    }
 
     /// <summary>必须用 async void，确保异常能传播到 DispatcherUnhandledException 并弹窗。</summary>
     private async void ToggleRecord()
     {
+        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] TOGGLE: starting={_starting}, session={_session != null}\n");
         if (_starting)
             return;
         if (_session is { IsRecording: true })
@@ -252,7 +258,16 @@ public partial class MainView : Window
             _session.Stop();
             return;
         }
-        await StartRecordingAsync();
+        try
+        {
+            await StartRecordingAsync();
+            System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: OK\n");
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: THREW {ex.GetType().Name}: {ex.Message}\n");
+            MessageBox.Show(this, "录制启动失败：" + ex.Message, "QSrcRecorder", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void TogglePause()
@@ -272,9 +287,14 @@ public partial class MainView : Window
     /// </summary>
     private async Task StartRecordingAsync(RecordingOptions? preset = null)
     {
+        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: enter\n");
         if (_starting || _session is { IsRecording: true })
+        {
+            System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: early return\n");
             return;
+        }
 
+        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: building opts\n");
         RecordingOptions opts;
         if (preset != null)
         {
@@ -284,10 +304,14 @@ public partial class MainView : Window
         {
             var built = BuildOptions();
             if (built == null)
+            {
+                System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: BuildOptions returned null\n");
                 return;
+            }
             opts = built;
             _softwareRetryUsed = false;
         }
+        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: opts={opts.Mode}\n");
         _lastOptions = opts;
 
         bool clickHighlight = _settings.ClickHighlight;
@@ -295,23 +319,35 @@ public partial class MainView : Window
         bool mouseHighlight = _settings.MouseHighlight;
         bool webcamEnabled = _settings.WebcamEnabled;
         var clickEngine = clickHighlight ? _clickEngine : null;
+        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcamEnabled={webcamEnabled}\n");
 
         // 共享摄像头实例：session 和 overlay 共用同一个，避免双重占用
+        // 摄像头初始化放后台线程，避免阻塞 UI 线程导致死锁
         WebcamCapture? sharedWebcam = null;
         if (webcamEnabled)
         {
             try
             {
-                sharedWebcam = new WebcamCapture();
-                sharedWebcam.Start(string.IsNullOrWhiteSpace(_settings.WebcamDeviceId) ? null : _settings.WebcamDeviceId);
+                System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: starting webcam async\n");
+                sharedWebcam = await Task.Run(() =>
+                {
+                    System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam Task.Run start\n");
+                    var wc = new WebcamCapture();
+                    wc.Start(string.IsNullOrWhiteSpace(_settings.WebcamDeviceId) ? null : _settings.WebcamDeviceId);
+                    System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam Task.Run OK\n");
+                    return wc;
+                }).ConfigureAwait(true);
+                System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam await completed\n");
             }
             catch (Exception ex)
             {
+                System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam FAILED: {ex.GetType().Name}: {ex.Message}\n");
                 MessageBox.Show(this, "摄像头打开失败：" + ex.Message, "QSrcRecorder",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 sharedWebcam = null;
             }
         }
+        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam={sharedWebcam != null}\n");
 
         _starting = true;
         SetStatus("正在启动录制…");
