@@ -321,3 +321,80 @@ public class MouseHighlightFillTests
         Assert.Equal(0, frame[i + 2]);
     }
 }
+
+public class PipCompositorTests
+{
+    [Fact]
+    public void ComputeRect_右下角贴边且偶数尺寸()
+    {
+        var r = ScreenRecorder.Capture.PipCompositor.ComputeRect(1920, 1080,
+            ScreenRecorder.Capture.PipCorner.BottomRight, sizeIndex: 1, marginPx: 12);
+        Assert.True(r.Width >= 2 && r.Height >= 2);
+        Assert.Equal(0, r.Width % 2);
+        Assert.Equal(0, r.Height % 2);
+        Assert.Equal(1920 - 12 - r.Width, r.X);
+        Assert.Equal(1080 - 12 - r.Height, r.Y);
+    }
+
+    [Theory]
+    [InlineData(ScreenRecorder.Capture.PipCorner.TopLeft, true, true)]
+    [InlineData(ScreenRecorder.Capture.PipCorner.TopRight, false, true)]
+    [InlineData(ScreenRecorder.Capture.PipCorner.BottomLeft, true, false)]
+    [InlineData(ScreenRecorder.Capture.PipCorner.BottomRight, false, false)]
+    public void ComputeRect_四角位置(
+        ScreenRecorder.Capture.PipCorner corner, bool nearLeft, bool nearTop)
+    {
+        var r = ScreenRecorder.Capture.PipCompositor.ComputeRect(800, 600, corner, 0, 10);
+        if (nearLeft) Assert.True(r.X <= 10);
+        else Assert.True(r.X + r.Width >= 800 - 10);
+        if (nearTop) Assert.True(r.Y <= 10);
+        else Assert.True(r.Y + r.Height >= 600 - 10);
+    }
+
+    [Fact]
+    public void Blit_缩放写入目标区且不越界()
+    {
+        int dw = 100, dh = 80;
+        var dest = new byte[dw * dh * 4];
+        // 2x2 源：纯红
+        var src = new byte[]
+        {
+            0, 0, 255, 255,  0, 0, 255, 255,
+            0, 0, 255, 255,  0, 0, 255, 255,
+        };
+        var rect = new System.Drawing.Rectangle(10, 10, 20, 16);
+        ScreenRecorder.Capture.PipCompositor.Blit(dest, dw, dh, src, 2, 2, rect, mirrorX: false, drawBorder: false);
+
+        int i = (18 * dw + 15) * 4; // 矩形内部
+        Assert.Equal(255, dest[i + 2]); // R
+        // 矩形外仍为 0
+        Assert.Equal(0, dest[0]);
+    }
+
+    [Fact]
+    public void Blit_镜像后左右像素对调()
+    {
+        int dw = 40, dh = 20;
+        var dest = new byte[dw * dh * 4];
+        // 2x1：左蓝右红
+        var src = new byte[]
+        {
+            255, 0, 0, 255, // B
+            0, 0, 255, 255, // R
+        };
+        var rect = new System.Drawing.Rectangle(0, 0, 2, 1);
+        ScreenRecorder.Capture.PipCompositor.Blit(dest, dw, dh, src, 2, 1, rect, mirrorX: true, drawBorder: false);
+        // 镜像后 dest[0] 应为原右边红，dest[1] 为原左边蓝
+        Assert.Equal(255, dest[2]); // R at x=0
+        Assert.Equal(255, dest[4]); // B at x=1
+    }
+
+    [Fact]
+    public void ParseCorner_非法回退右下()
+    {
+        Assert.Equal(ScreenRecorder.Capture.PipCorner.BottomRight,
+            ScreenRecorder.Capture.PipCompositor.ParseCorner(null));
+        Assert.Equal(ScreenRecorder.Capture.PipCorner.TopLeft,
+            ScreenRecorder.Capture.PipCompositor.ParseCorner("TopLeft"));
+    }
+}

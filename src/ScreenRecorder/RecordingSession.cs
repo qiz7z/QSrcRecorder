@@ -47,6 +47,16 @@ public sealed record RecordingOptions
     public int SysBass { get; init; } = 0;
     /// <summary>系统声音高音增强（-5 ~ +5 dB，默认 0）。</summary>
     public int SysTreble { get; init; } = 0;
+    /// <summary>成片角落叠摄像头人像（画中画）。</summary>
+    public bool WebcamEnabled { get; init; } = false;
+    /// <summary>摄像头设备 Id（空=默认第一台）。</summary>
+    public string WebcamDeviceId { get; init; } = "";
+    /// <summary>画中画角落：TopLeft/TopRight/BottomLeft/BottomRight。</summary>
+    public string WebcamCorner { get; init; } = "BottomRight";
+    /// <summary>画中画大小档：0 小 / 1 中 / 2 大。</summary>
+    public int WebcamSizeIndex { get; init; } = 1;
+    /// <summary>摄像头画面水平镜像（自拍观感，默认开）。</summary>
+    public bool WebcamMirror { get; init; } = true;
 }
 
 public sealed class RecordingResult
@@ -67,6 +77,8 @@ public sealed class RecordingResult
     public long DroppedFrames;
     /// <summary>音频合成警告（非致命，视频仍成功）。</summary>
     public string? AudioWarning;
+    /// <summary>摄像头/画中画警告（非致命）。</summary>
+    public string? WebcamWarning;
 
     /// <summary>录制刚起步就因编码器失败（典型：双显卡机器上 NVENC 间歇不可用），适合自动降级重录。
     /// 帧数上限放宽到 12.5 秒（300 帧），覆盖编码中途失败的场景。</summary>
@@ -275,6 +287,8 @@ public sealed class RecordingSession : IDisposable
 {
     private readonly RecordingOptions _opts;
     private readonly string _ffmpegPath;
+    private readonly Overlays.ClickHighlightEngine? _clickEngine;
+    private readonly string _clickColorHex;
     private D3DContext? _d3d;
     private WgcCapture? _capture;
     private FfmpegVideoEncoder? _encoder;
@@ -284,6 +298,7 @@ public sealed class RecordingSession : IDisposable
     private volatile bool _paused;
     private long _framesWritten;
     private int _fullWidth;
+    private int _fullHeight;
     private Rectangle _crop;
     private bool _cropped;
     private string _outputPath = "";
@@ -298,6 +313,11 @@ public sealed class RecordingSession : IDisposable
     private string? _systemAudioWavePath;
     private string? _tempMuxPath;
     private string? _audioMuxWarning;
+    private string? _webcamWarning;
+    private WebcamCapture? _webcam;
+    private byte[]? _composeBuffer;
+    private Rectangle _monitorRect;
+    private readonly byte _clickB, _clickG, _clickR;
 
     public event Action<RecordingResult>? Completed;
 
@@ -313,6 +333,10 @@ public sealed class RecordingSession : IDisposable
     {
         _opts = opts;
         _ffmpegPath = ffmpegPath;
+        _clickEngine = clickEngine;
+        _clickColorHex = clickColorHex;
+        (_clickB, _clickG, _clickR) = Overlays.ClickHighlightEngine.ParseColor(clickColorHex);
+        _ = mouseHighlight; // 跟随圆由 UI 覆盖层负责，session 只合帧点击光圈与摄像头
     }
 
     public void Start()
@@ -330,6 +354,7 @@ public sealed class RecordingSession : IDisposable
                 ? _capture.StartForWindow(_opts.WindowHandle, _opts.Scale)
                 : _capture.StartForMonitor(_opts.MonitorHandle, _opts.Scale);
             _fullWidth = size.Width;
+            _fullHeight = size.Height;
 
             _cropped = _opts.Mode == RecordMode.Region && _opts.Region.HasValue;
             if (_cropped)
@@ -342,6 +367,12 @@ public sealed class RecordingSession : IDisposable
                 _crop = RegionMath.PrepareCrop(scaled, size.Width, size.Height);
             }
 
+            // 点击坐标换算用的监视器矩形（窗口模式用客户区原点，ScreenToClient 处理）
+            if (_opts.Mode == RecordMode.Window)
+                _monitorRect = Rectangle.Empty;
+            else
+                _monitorRect = Interop.Win32Native.MonitorRect(_opts.MonitorHandle);
+
             // 等第一帧，确认画面可用
             var sw = Stopwatch.StartNew();
             while (!_capture.TryReadFrame())
@@ -351,6 +382,27 @@ public sealed class RecordingSession : IDisposable
                 Thread.Sleep(10);
             }
 
+            if (_opts.WebcamEnabled)
+            {
+                try
+                {
+                    _webcam = new WebcamCapture();
+                    _webcam.Start(string.IsNullOrWhiteSpace(_opts.WebcamDeviceId) ? null : _opts.WebcamDeviceId);
+                }
+                catch (Exception ex)
+                {
+                    _webcamWarning = "摄像头不可用，已跳过人像画中画：" + ex.Message;
+                    try { _webcam?.Dispose(); } catch { }
+                    _webcam = null;
+                }
+            }
+
+            int outW = _cropped ? _crop.Width : size.Width;
+            int outH = _cropped ? _crop.Height : size.Height;
+            // 区域裁剪或需要叠点击/摄像头时，使用输出尺寸工作缓冲
+            if (_cropped || _clickEngine != null || _webcam != null)
+                _composeBuffer = new byte[outW * outH * 4];
+
             var kind = _opts.Encoder == EncoderKind.Auto
                 ? HardwareEncoderDetector.Detect(_ffmpegPath)
                 : _opts.Encoder;
@@ -359,8 +411,8 @@ public sealed class RecordingSession : IDisposable
                 kind,
                 _opts.Fps,
                 _opts.Quality,
-                _cropped ? _crop.Width : size.Width,
-                _cropped ? _crop.Height : size.Height);
+                outW,
+                outH);
 
             try
             {
@@ -403,6 +455,8 @@ public sealed class RecordingSession : IDisposable
         }
         catch
         {
+            try { _webcam?.Dispose(); } catch { }
+            _webcam = null;
             _capture?.Dispose();
             _capture = null;
             _d3d.Dispose();
@@ -424,9 +478,14 @@ public sealed class RecordingSession : IDisposable
     private void Loop()
     {
         var capture = _capture!;
-        var buffer = capture.FrameBuffer;
+        var srcBuffer = capture.FrameBuffer;
         long interval = Stopwatch.Frequency / _opts.Fps;
         long next = Stopwatch.GetTimestamp();
+        int outW = _cropped ? _crop.Width : _fullWidth;
+        int outH = _cropped ? _crop.Height : _fullHeight;
+        bool needCompose = _composeBuffer != null;
+        var pipCorner = PipCompositor.ParseCorner(_opts.WebcamCorner);
+        IntPtr hwnd = _opts.WindowHandle;
 
         try
         {
@@ -449,14 +508,25 @@ public sealed class RecordingSession : IDisposable
                 capture.TryReadFrame(); // 无新帧则复用上一帧内容
                 _captureMs += (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
 
-                if (_cropped)
+                byte[] frameToEncode;
+                if (needCompose)
                 {
-                    _writer!.EnqueueCropped(buffer, _crop.X, _crop.Y, _crop.Width, _crop.Height, _fullWidth);
+                    var dest = _composeBuffer!;
+                    if (_cropped)
+                        PipCompositor.CopyCrop(srcBuffer, _fullWidth, _fullHeight, _crop, dest);
+                    else
+                        Buffer.BlockCopy(srcBuffer, 0, dest, 0, outW * outH * 4);
+
+                    DrawClickOverlays(dest, outW, outH, hwnd);
+                    DrawWebcamPip(dest, outW, outH, pipCorner);
+                    frameToEncode = dest;
                 }
                 else
                 {
-                    _writer!.EnqueueFull(buffer);
+                    frameToEncode = srcBuffer;
                 }
+
+                _writer!.EnqueueFull(frameToEncode);
                 _framesWritten++;
 
                 if (capture.SizeChanged)
@@ -487,6 +557,89 @@ public sealed class RecordingSession : IDisposable
         }
 
         FinishLoop();
+    }
+
+    private void DrawClickOverlays(byte[] frame, int width, int height, IntPtr hwnd)
+    {
+        if (_clickEngine == null)
+            return;
+
+        long now = Environment.TickCount64;
+        var clicks = _clickEngine.GetActiveClicks(now);
+        if (clicks.Count == 0)
+            return;
+
+        int pitch = width * 4;
+        Rectangle? cropForMap = _cropped ? _crop : null;
+        Func<int, int, (int X, int Y)>? toClient = null;
+        if (_opts.Mode == RecordMode.Window && hwnd != IntPtr.Zero)
+        {
+            toClient = (sx, sy) =>
+            {
+                var pt = new Interop.Win32Native.POINT { X = sx, Y = sy };
+                _ = Interop.Win32Native.ScreenToClient(hwnd, ref pt);
+                return (pt.X, pt.Y);
+            };
+        }
+
+        foreach (var (sx, sy, t) in clicks)
+        {
+            var (bigA, rippleR, rippleA) = Overlays.ClickHighlightEngine.Animate(t, now);
+            if (bigA <= 0 && rippleA <= 0)
+                continue;
+
+            var (fx, fy) = Overlays.ClickHighlightEngine.ScreenToFrame(
+                sx, sy, _opts.Mode, _monitorRect, _opts.Scale, cropForMap, toClient);
+
+            if (bigA > 0)
+            {
+                Overlays.ClickHighlightEngine.DrawCircleFill(
+                    frame, width, height, pitch,
+                    fx, fy, Overlays.ClickHighlightEngine.BigRadius,
+                    Math.Max(1, bigA / 3), bigA, _clickB, _clickG, _clickR);
+            }
+            if (rippleA > 0 && rippleR > 0)
+            {
+                Overlays.ClickHighlightEngine.DrawCircleRing(
+                    frame, width, height, pitch,
+                    fx, fy, rippleR, rippleA, _clickB, _clickG, _clickR);
+            }
+        }
+    }
+
+    private void DrawWebcamPip(byte[] frame, int width, int height, PipCorner corner)
+    {
+        if (_webcam == null)
+            return;
+        if (!_webcam.TryCopyLatestFrame(out var cam, out int cw, out int ch) || cw < 1 || ch < 1)
+            return;
+
+        var rect = PipCompositor.ComputeRect(width, height, corner, _opts.WebcamSizeIndex,
+            marginPx: 12, sourceW: cw, sourceH: ch);
+        if (rect.Width < 2 || rect.Height < 2)
+            return;
+
+        // 把实时摄像头帧写进输出缓冲前，先校验像素内容（防止 NV12/BGRA 误判导致全黑/偏色）
+        if (IsFramePlausible(cam, cw, ch))
+            PipCompositor.Blit(frame, width, height, cam, cw, ch, rect, _opts.WebcamMirror, drawBorder: true);
+    }
+
+    /// <summary>粗略校验一帧是否包含合理像素内容（非全黑/全白/异常纯色）。</summary>
+    private static bool IsFramePlausible(byte[] bgra, int w, int h)
+    {
+        if (bgra == null || bgra.Length < w * h * 4)
+            return false;
+        // 采样四个角 + 中心，至少有一个通道 > 16
+        int[] offsetsX = [0, w - 1, 0, w - 1, w / 2];
+        int[] offsetsY = [0, 0, h - 1, h - 1, h / 2];
+        for (int k = 0; k < offsetsX.Length; k++)
+        {
+            int x = offsetsX[k], y = offsetsY[k];
+            int i = (y * w + x) * 4;
+            if (bgra[i] > 16 || bgra[i + 1] > 16 || bgra[i + 2] > 16)
+                return true;
+        }
+        return false;
     }
 
     private void FinishLoop()
@@ -531,9 +684,12 @@ public sealed class RecordingSession : IDisposable
         _encoder?.Dispose();
         _encoder = null;
 
-        // 停止音频捕获
+        // 停止音频 / 摄像头
         _audioCapture?.Stop(); _audioCapture?.Dispose(); _audioCapture = null;
         _systemAudioCapture?.Stop(); _systemAudioCapture?.Dispose(); _systemAudioCapture = null;
+        try { _webcam?.Stop(); _webcam?.Dispose(); } catch { }
+        _webcam = null;
+        _composeBuffer = null;
 
         if (encodeOk && AudioHasContent())
         {
@@ -647,6 +803,7 @@ public sealed class RecordingSession : IDisposable
             StopReason = _stopReason,
             Error = _error,
             AudioWarning = _audioMuxWarning,
+            WebcamWarning = _webcamWarning,
             Success = encodeOk && _error == null && File.Exists(_outputPath),
             EncoderUsed = _encoderUsed,
             CaptureMs = _captureMs,

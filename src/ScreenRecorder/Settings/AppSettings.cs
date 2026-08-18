@@ -37,6 +37,16 @@ public sealed class AppSettings
     public int SysBass { get; set; }
     /// <summary>系统声音高音增强（-5 ~ +5 dB，默认 0）。</summary>
     public int SysTreble { get; set; }
+    /// <summary>录制时在成片叠摄像头人像（画中画）。</summary>
+    public bool WebcamEnabled { get; set; }
+    /// <summary>摄像头设备 Id（空=默认第一台）。</summary>
+    public string WebcamDeviceId { get; set; } = "";
+    /// <summary>画中画角落：TopLeft / TopRight / BottomLeft / BottomRight。</summary>
+    public string WebcamCorner { get; set; } = "BottomRight";
+    /// <summary>画中画大小：0 小 / 1 中 / 2 大。</summary>
+    public int WebcamSizeIndex { get; set; } = 1;
+    /// <summary>摄像头画面水平镜像。</summary>
+    public bool WebcamMirror { get; set; } = true;
 
     private static string FolderPath
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QSrcRecorder");

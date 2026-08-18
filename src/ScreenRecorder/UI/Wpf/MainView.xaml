@@ -498,6 +498,47 @@
                                 </StackPanel>
                             </Border>
                         </StackPanel>
+                        <!-- 摄像头人像画中画 -->
+                        <StackPanel Margin="0,10,0,0">
+                            <CheckBox x:Name="ChkWebcam" Content="同时录制摄像头人像" FontSize="12.5"
+                                      Foreground="{StaticResource TextPrimary}" Cursor="Hand"
+                                      Checked="Webcam_Changed" Unchecked="Webcam_Changed"/>
+                            <StackPanel x:Name="WebcamOptionsPanel" Margin="2,6,0,0" Visibility="Collapsed">
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="设备" FontSize="11.5" Foreground="{StaticResource TextSecondary}"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <ComboBox x:Name="CboWebcamDevice" Grid.Column="1" Height="26" FontSize="12"
+                                              SelectionChanged="WebcamOption_Changed"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="8"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="位置" FontSize="11.5" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,2"/>
+                                        <ComboBox x:Name="CboWebcamCorner" Height="26" FontSize="12"
+                                                  SelectionChanged="WebcamOption_Changed"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="大小" FontSize="11.5" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,2"/>
+                                        <ComboBox x:Name="CboWebcamSize" Height="26" FontSize="12"
+                                                  SelectionChanged="WebcamOption_Changed"/>
+                                    </StackPanel>
+                                </Grid>
+                                <CheckBox x:Name="ChkWebcamMirror" Content="水平镜像" FontSize="12"
+                                          Foreground="{StaticResource TextPrimary}" Cursor="Hand"
+                                          Checked="WebcamOption_Changed" Unchecked="WebcamOption_Changed"/>
+                                <TextBlock x:Name="WebcamStatusText" FontSize="11" Margin="0,4,0,0"
+                                           Foreground="{StaticResource TextTertiary}" TextWrapping="Wrap"
+                                           Visibility="Collapsed"/>
+                            </StackPanel>
+                        </StackPanel>
                         <StackPanel Margin="0,10,0,0">
                             <CheckBox x:Name="ChkMouseHighlight" Content="鼠标跟随圆（常驻高亮）" FontSize="12.5"
                                       Foreground="{StaticResource TextPrimary}" Cursor="Hand" Margin="0,0,0,6"

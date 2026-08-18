@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
+using ScreenRecorder.Capture;
 using ScreenRecorder.Encoding;
 using ScreenRecorder.Interop;
 using ScreenRecorder.Overlays;
@@ -27,6 +28,7 @@ public partial class MainView : Window
     private ScreenRecorder.Overlays.MouseHighlightOverlay? _spot;
     private RecordingOptions? _lastOptions;
     private bool _softwareRetryUsed;
+    private bool _starting; // 防止启动过程中重复点击/热键
     private Win32Native.WinWindowInfo? _window;
     private AppSettings _settings = new();
     private bool _loadingSettings; // 初始化期间阻止事件处理器触发 SaveSettings
@@ -53,11 +55,22 @@ public partial class MainView : Window
         CboQuality.Items.Add("低");
         CboQuality.SelectedIndex = 1;
 
+        CboWebcamCorner.Items.Add("右下");
+        CboWebcamCorner.Items.Add("左下");
+        CboWebcamCorner.Items.Add("右上");
+        CboWebcamCorner.Items.Add("左上");
+        CboWebcamCorner.SelectedIndex = 0;
+        CboWebcamSize.Items.Add("小");
+        CboWebcamSize.Items.Add("中");
+        CboWebcamSize.Items.Add("大");
+        CboWebcamSize.SelectedIndex = 1;
+
         Loaded += (_, _) =>
         {
             RefreshScreens();
             LoadSettings();
             _ = DetectEncoderAsync();
+            _ = LoadWebcamDevicesAsync();
             _clickEngine.Start();
             InitTray();
         };
@@ -230,12 +243,14 @@ public partial class MainView : Window
 
     private void ToggleRecord()
     {
+        if (_starting)
+            return;
         if (_session is { IsRecording: true })
         {
             _session.Stop();
             return;
         }
-        StartRecording();
+        _ = StartRecordingAsync();
     }
 
     private void TogglePause()
@@ -248,9 +263,14 @@ public partial class MainView : Window
             _session.Pause();
     }
 
-    private void StartRecording(RecordingOptions? preset = null)
+    private void StartRecording(RecordingOptions? preset = null) => _ = StartRecordingAsync(preset);
+
+    /// <summary>
+    /// 启动录制：UI 立即响应（状态 + 隐藏主窗），重初始化（D3D/WGC/等首帧/硬编探测/ffmpeg）放到后台线程，避免点按钮卡顿。
+    /// </summary>
+    private async Task StartRecordingAsync(RecordingOptions? preset = null)
     {
-        if (_session is { IsRecording: true })
+        if (_starting || _session is { IsRecording: true })
             return;
 
         RecordingOptions opts;
@@ -268,53 +288,82 @@ public partial class MainView : Window
         }
         _lastOptions = opts;
 
+        bool clickHighlight = _settings.ClickHighlight;
+        string clickColor = _settings.ClickHighlightColor;
+        bool mouseHighlight = _settings.MouseHighlight;
+        var clickEngine = clickHighlight ? _clickEngine : null;
+
+        _starting = true;
+        SetStatus("正在启动录制…");
+        UpdateTrayText("正在启动录制…");
+        SaveSettings();
+        // 先隐藏主窗，让用户立刻感到已响应；失败时再恢复
+        if (!_trayVisible)
+            Hide();
+
+        RecordingSession? session = null;
         try
         {
-            var ffmpeg = FfmpegVideoEncoder.LocateFfmpeg();
-            // RecordingSession 构造函数：(opts, ffmpegPath, clickEngine, clickColorHex, mouseHighlight)
-            // RecordAudio 通过 opts 传入，不在这里传
-            _session = new RecordingSession(opts, ffmpeg,
-                _settings.ClickHighlight ? _clickEngine : null,
-                _settings.ClickHighlightColor,
-                _settings.MouseHighlight);
-            _session.Completed += OnSessionCompleted;
-            _session.Start();
+            string ffmpeg = FfmpegVideoEncoder.LocateFfmpeg();
+            // D3D/WGC/等首帧/硬编探测/ffmpeg 拉起都较重；WGC 使用 CreateFreeThreaded，可在后台线程初始化
+            session = await Task.Run(() =>
+            {
+                var s = new RecordingSession(opts, ffmpeg, clickEngine, clickColor, mouseHighlight);
+                s.Start();
+                return s;
+            }).ConfigureAwait(true);
+
+            session.Completed += OnSessionCompleted;
+            _session = session;
+
+            // 托盘模式（窗口已隐藏）录制时不显示悬浮条——画面干净；
+            // 正常模式录制时显示悬浮条，可点悬浮条"隐藏"按钮收进托盘
+            if (!_trayVisible)
+            {
+                _bar = new RecordingBarForm(_session);
+                _bar.HideRequested += OnBarHideRequested;
+                _bar.Show();
+            }
+            SetStatus("正在录制…");
+            UpdateTrayText("正在录制…");
+
+            // 鼠标跟随圆：屏幕实时覆盖层（全屏/区域模式会随画面录进成片；窗口模式由软件合帧兜底）
+            if (mouseHighlight)
+            {
+                try
+                {
+                    _spot = new ScreenRecorder.Overlays.MouseHighlightOverlay();
+                    _spot.SetColor(clickColor);
+                    _spot.Show();
+                }
+                catch (Exception ex)
+                {
+                    System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "spot_diag.log"),
+                        $"[{DateTime.Now:HH:mm:ss.fff}] _spot 创建失败: {ex}\n");
+                }
+            }
         }
         catch (Exception ex)
         {
+            try { session?.Dispose(); } catch { /* ignore */ }
+            _session = null;
+            _bar?.Close();
+            _bar = null;
+            _spot?.Close();
+            _spot = null;
+            if (!_trayVisible)
+            {
+                Show();
+                Activate();
+            }
             MessageBox.Show(this, "启动录制失败：" + ex.Message, "QSrcRecorder",
                 MessageBoxButton.OK, MessageBoxImage.Error);
-            _session = null;
-            return;
+            SetStatus("就绪");
+            UpdateTrayText("就绪");
         }
-
-        SaveSettings();
-        Hide();
-        // 托盘模式（窗口已隐藏）录制时不显示悬浮条——画面干净；
-        // 正常模式录制时显示悬浮条，可点悬浮条"隐藏"按钮收进托盘
-        if (!_trayVisible)
+        finally
         {
-            _bar = new RecordingBarForm(_session);
-            _bar.HideRequested += OnBarHideRequested;
-            _bar.Show();
-        }
-        SetStatus("正在录制…");
-        UpdateTrayText("正在录制…");
-
-        // 鼠标跟随圆：屏幕实时覆盖层（全屏/区域模式会随画面录进成片；窗口模式由软件合帧兜底）
-        if (_settings.MouseHighlight)
-        {
-            try
-            {
-                _spot = new ScreenRecorder.Overlays.MouseHighlightOverlay();
-                _spot.SetColor(_settings.ClickHighlightColor);
-                _spot.Show();
-            }
-            catch (Exception ex)
-            {
-                System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "spot_diag.log"),
-                    $"[{DateTime.Now:HH:mm:ss.fff}] _spot 创建失败: {ex}\n");
-            }
+            _starting = false;
         }
     }
 
@@ -357,6 +406,11 @@ public partial class MainView : Window
             MicNoiseGate = _settings.MicNoiseGate,
             SysBass = _settings.SysBass,
             SysTreble = _settings.SysTreble,
+            WebcamEnabled = _settings.WebcamEnabled,
+            WebcamDeviceId = _settings.WebcamDeviceId,
+            WebcamCorner = _settings.WebcamCorner,
+            WebcamSizeIndex = Math.Clamp(_settings.WebcamSizeIndex, 0, 2),
+            WebcamMirror = _settings.WebcamMirror,
         };
 
         if (ModeWindow.IsChecked == true)
@@ -429,6 +483,8 @@ public partial class MainView : Window
                     message = r.StopReason + "\n\n" + message;
                 if (!string.IsNullOrEmpty(r.AudioWarning))
                     message = "⚠ " + r.AudioWarning + "\n\n" + message;
+                if (!string.IsNullOrEmpty(r.WebcamWarning))
+                    message = "⚠ " + r.WebcamWarning + "\n\n" + message;
                 if (MessageBox.Show(this, message, "QSrcRecorder",
                         MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
                 {
@@ -522,6 +578,98 @@ public partial class MainView : Window
         if (_loadingSettings) return;
         _settings.RecordSystemAudio = ChkSystemAudioRecord.IsChecked == true;
         SaveSettings();
+    }
+
+    // ── 摄像头人像 ─────────────────────────────────
+    private async Task LoadWebcamDevicesAsync()
+    {
+        try
+        {
+            var devices = await Task.Run(() => WebcamCapture.EnumerateDevices()).ConfigureAwait(true);
+            _loadingSettings = true;
+            CboWebcamDevice.Items.Clear();
+            if (devices.Count == 0)
+            {
+                CboWebcamDevice.Items.Add(new WebcamDeviceInfo("", "（未检测到摄像头）"));
+                CboWebcamDevice.SelectedIndex = 0;
+                WebcamStatusText.Text = "未检测到摄像头设备";
+                WebcamStatusText.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                int sel = 0;
+                for (int i = 0; i < devices.Count; i++)
+                {
+                    CboWebcamDevice.Items.Add(devices[i]);
+                    if (!string.IsNullOrEmpty(_settings.WebcamDeviceId)
+                        && devices[i].Id == _settings.WebcamDeviceId)
+                        sel = i;
+                }
+                CboWebcamDevice.SelectedIndex = sel;
+                CboWebcamDevice.DisplayMemberPath = nameof(WebcamDeviceInfo.Name);
+                WebcamStatusText.Visibility = Visibility.Collapsed;
+            }
+            _loadingSettings = false;
+        }
+        catch (Exception ex)
+        {
+            _loadingSettings = false;
+            WebcamStatusText.Text = "枚举摄像头失败：" + ex.Message;
+            WebcamStatusText.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void Webcam_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        _settings.WebcamEnabled = ChkWebcam.IsChecked == true;
+        WebcamOptionsPanel.Visibility = _settings.WebcamEnabled ? Visibility.Visible : Visibility.Collapsed;
+        SaveSettings();
+    }
+
+    private void WebcamOption_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        PullWebcamSettingsFromUi();
+        SaveSettings();
+    }
+
+    private void WebcamOption_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_loadingSettings) return;
+        PullWebcamSettingsFromUi();
+        SaveSettings();
+    }
+
+    private void PullWebcamSettingsFromUi()
+    {
+        _settings.WebcamEnabled = ChkWebcam.IsChecked == true;
+        if (CboWebcamDevice.SelectedItem is WebcamDeviceInfo dev && !string.IsNullOrEmpty(dev.Id))
+            _settings.WebcamDeviceId = dev.Id;
+        _settings.WebcamCorner = CboWebcamCorner.SelectedIndex switch
+        {
+            1 => "BottomLeft",
+            2 => "TopRight",
+            3 => "TopLeft",
+            _ => "BottomRight",
+        };
+        _settings.WebcamSizeIndex = Math.Clamp(CboWebcamSize.SelectedIndex, 0, 2);
+        _settings.WebcamMirror = ChkWebcamMirror.IsChecked != false;
+    }
+
+    private void ApplyWebcamSettingsToUi()
+    {
+        ChkWebcam.IsChecked = _settings.WebcamEnabled;
+        WebcamOptionsPanel.Visibility = _settings.WebcamEnabled ? Visibility.Visible : Visibility.Collapsed;
+        CboWebcamCorner.SelectedIndex = _settings.WebcamCorner switch
+        {
+            "BottomLeft" => 1,
+            "TopRight" => 2,
+            "TopLeft" => 3,
+            _ => 0,
+        };
+        CboWebcamSize.SelectedIndex = Math.Clamp(_settings.WebcamSizeIndex, 0, 2);
+        ChkWebcamMirror.IsChecked = _settings.WebcamMirror;
     }
 
     // ── 音效调节 ──────────────────────────────────
@@ -724,6 +872,7 @@ public partial class MainView : Window
         ChkMicNoiseGate.IsChecked = _settings.MicNoiseGate;
         SysBassText.Text = _settings.SysBass.ToString();
         SysTrebleText.Text = _settings.SysTreble.ToString();
+        ApplyWebcamSettingsToUi();
         SldMicVolume.ValueChanged += (s, e) => SldMicVolume_ValueChanged(s, e);
         SldSysVolume.ValueChanged += (s, e) => SldSysVolume_ValueChanged(s, e);
         CboFps.SelectionChanged += (_, _) => SaveSettings();
@@ -745,6 +894,7 @@ public partial class MainView : Window
         _settings.OutputFolder = TxtFolder.Text.Trim();
         _settings.RecordAudio = ChkAudioRecord.IsChecked == true;
         _settings.RecordSystemAudio = ChkSystemAudioRecord.IsChecked == true;
+        PullWebcamSettingsFromUi();
         _settings.Save();
     }
 }
