@@ -399,13 +399,13 @@ public partial class MainView : Window
                 }
             }
 
-            // 画中画预览覆盖层：录制时隐藏（避免被 WGC 捕获进成片），录制结束后显示供用户调整位置
+            // 画中画预览覆盖层：录制时可见（已通过 DWMWA_EXCLUDED_FROM_CAPTURE 排除捕获）
             if (sharedWebcam != null && _session != null)
             {
                 try
                 {
                     _pipOverlay = new PipOverlayWindow(sharedWebcam);
-                    _pipOverlay.HideAndClear(); // 录制时隐藏，不在画面中
+                    _pipOverlay.Show(); // 显示窗口供用户预览
                     _pipOverlay.Start();
                 }
                 catch (Exception ex)
