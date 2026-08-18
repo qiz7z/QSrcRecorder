@@ -57,6 +57,16 @@ public sealed record RecordingOptions
     public int WebcamSizeIndex { get; init; } = 1;
     /// <summary>摄像头画面水平镜像（自拍观感，默认开）。</summary>
     public bool WebcamMirror { get; init; } = true;
+    /// <summary>画中画自定义位置（相对输出帧的宽高比）。</summary>
+    public bool WebcamCustomPosition { get; init; } = false;
+    /// <summary>画中画左上角 X 相对输出帧宽的比例（0~1）。</summary>
+    public double WebcamPosX { get; init; } = 0.75;
+    /// <summary>画中画左上角 Y 相对输出帧高的比例（0~1）。</summary>
+    public double WebcamPosY { get; init; } = 0.75;
+    /// <summary>画中画宽度相对输出帧宽的比例（0~1）。</summary>
+    public double WebcamSizeW { get; init; } = 0.22;
+    /// <summary>画中画高度相对输出帧高的比例（0~1）。</summary>
+    public double WebcamSizeH { get; init; } = 0.16;
 }
 
 public sealed class RecordingResult
@@ -289,6 +299,7 @@ public sealed class RecordingSession : IDisposable
     private readonly string _ffmpegPath;
     private readonly Overlays.ClickHighlightEngine? _clickEngine;
     private readonly string _clickColorHex;
+    private readonly WebcamCapture? _sharedWebcam; // 由调用方提供，overlay 可复用预览
     private D3DContext? _d3d;
     private WgcCapture? _capture;
     private FfmpegVideoEncoder? _encoder;
@@ -315,6 +326,7 @@ public sealed class RecordingSession : IDisposable
     private string? _audioMuxWarning;
     private string? _webcamWarning;
     private WebcamCapture? _webcam;
+    private bool _ownsWebcam; // 仅内部创建的摄像头才需要 dispose
     private byte[]? _composeBuffer;
     private Rectangle _monitorRect;
     private readonly byte _clickB, _clickG, _clickR;
@@ -329,12 +341,14 @@ public sealed class RecordingSession : IDisposable
     public RecordingSession(RecordingOptions opts, string ffmpegPath,
         Overlays.ClickHighlightEngine? clickEngine = null,
         string clickColorHex = "#DC2626",
-        bool mouseHighlight = false)
+        bool mouseHighlight = false,
+        WebcamCapture? sharedWebcam = null)
     {
         _opts = opts;
         _ffmpegPath = ffmpegPath;
         _clickEngine = clickEngine;
         _clickColorHex = clickColorHex;
+        _sharedWebcam = sharedWebcam;
         (_clickB, _clickG, _clickR) = Overlays.ClickHighlightEngine.ParseColor(clickColorHex);
         _ = mouseHighlight; // 跟随圆由 UI 覆盖层负责，session 只合帧点击光圈与摄像头
     }
@@ -384,17 +398,22 @@ public sealed class RecordingSession : IDisposable
 
             if (_opts.WebcamEnabled)
             {
-                try
+                if (_sharedWebcam != null)
+                    _webcam = _sharedWebcam;
+                else
                 {
                     _webcam = new WebcamCapture();
-                    _webcam.Start(string.IsNullOrWhiteSpace(_opts.WebcamDeviceId) ? null : _opts.WebcamDeviceId);
+                    try { _webcam.Start(string.IsNullOrWhiteSpace(_opts.WebcamDeviceId) ? null : _opts.WebcamDeviceId); }
+                    catch (Exception ex)
+                    {
+                        _webcamWarning = "摄像头不可用，已跳过人像画中画：" + ex.Message;
+                        try { _webcam?.Dispose(); } catch { }
+                        _webcam = null;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _webcamWarning = "摄像头不可用，已跳过人像画中画：" + ex.Message;
-                    try { _webcam?.Dispose(); } catch { }
-                    _webcam = null;
-                }
+                // 若外部已提供共享实例，不释放（overlay 还在用）
+                if (_sharedWebcam == null)
+                    _ownsWebcam = true;
             }
 
             int outW = _cropped ? _crop.Width : size.Width;
@@ -455,8 +474,13 @@ public sealed class RecordingSession : IDisposable
         }
         catch
         {
-            try { _webcam?.Dispose(); } catch { }
-            _webcam = null;
+            if (_webcam != null)
+            {
+                _webcam.Stop();
+                if (_ownsWebcam)
+                    try { _webcam.Dispose(); } catch { }
+                _webcam = null;
+            }
             _capture?.Dispose();
             _capture = null;
             _d3d.Dispose();
@@ -614,8 +638,14 @@ public sealed class RecordingSession : IDisposable
         if (!_webcam.TryCopyLatestFrame(out var cam, out int cw, out int ch) || cw < 1 || ch < 1)
             return;
 
-        var rect = PipCompositor.ComputeRect(width, height, corner, _opts.WebcamSizeIndex,
-            marginPx: 12, sourceW: cw, sourceH: ch);
+        Rectangle rect;
+        if (_opts.WebcamCustomPosition)
+            rect = PipCompositor.ComputeCustomRect(width, height,
+                _opts.WebcamPosX, _opts.WebcamPosY, _opts.WebcamSizeW, _opts.WebcamSizeH);
+        else
+            rect = PipCompositor.ComputeRect(width, height, corner, _opts.WebcamSizeIndex,
+                marginPx: 12, sourceW: cw, sourceH: ch);
+
         if (rect.Width < 2 || rect.Height < 2)
             return;
 
@@ -684,11 +714,16 @@ public sealed class RecordingSession : IDisposable
         _encoder?.Dispose();
         _encoder = null;
 
-        // 停止音频 / 摄像头
+        // 停止音频 / 摄像头（仅内部创建的才 dispose）
         _audioCapture?.Stop(); _audioCapture?.Dispose(); _audioCapture = null;
         _systemAudioCapture?.Stop(); _systemAudioCapture?.Dispose(); _systemAudioCapture = null;
-        try { _webcam?.Stop(); _webcam?.Dispose(); } catch { }
-        _webcam = null;
+        if (_webcam != null)
+        {
+            _webcam.Stop();
+            if (_ownsWebcam)
+                _webcam.Dispose();
+            _webcam = null;
+        }
         _composeBuffer = null;
 
         if (encodeOk && AudioHasContent())

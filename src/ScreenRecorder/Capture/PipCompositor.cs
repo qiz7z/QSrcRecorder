@@ -88,6 +88,29 @@ public static class PipCompositor
     };
 
     /// <summary>
+    /// 根据相对比例计算画中画矩形（自定义模式）。
+    /// pos 和 size 都是相对输出帧宽高（0~1）。
+    /// </summary>
+    public static Rectangle ComputeCustomRect(int frameW, int frameH,
+        double posX, double posY, double sizeW, double sizeH)
+    {
+        if (frameW < 4 || frameH < 4)
+            return Rectangle.Empty;
+
+        int x = Math.Max(0, (int)Math.Round(posX * frameW));
+        int y = Math.Max(0, (int)Math.Round(posY * frameH));
+        int w = Math.Max(2, (int)Math.Round(sizeW * frameW));
+        int h = Math.Max(2, (int)Math.Round(sizeH * frameH));
+
+        if (x + w > frameW) w = frameW - x;
+        if (y + h > frameH) h = frameH - y;
+        w = Math.Max(2, w & ~1);
+        h = Math.Max(2, h & ~1);
+
+        return new Rectangle(x, y, w, h);
+    }
+
+    /// <summary>
     /// 将 src(BGRA) 最近邻缩放到 destRect，可选水平镜像；外圈画 2px 近白描边。
     /// </summary>
     public static void Blit(

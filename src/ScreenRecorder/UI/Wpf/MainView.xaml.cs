@@ -26,6 +26,7 @@ public partial class MainView : Window
     private RecordingSession? _session;
     private RecordingBarForm? _bar;
     private ScreenRecorder.Overlays.MouseHighlightOverlay? _spot;
+    private PipOverlayWindow? _pipOverlay;
     private RecordingOptions? _lastOptions;
     private bool _softwareRetryUsed;
     private bool _starting; // 防止启动过程中重复点击/热键
@@ -291,7 +292,25 @@ public partial class MainView : Window
         bool clickHighlight = _settings.ClickHighlight;
         string clickColor = _settings.ClickHighlightColor;
         bool mouseHighlight = _settings.MouseHighlight;
+        bool webcamEnabled = _settings.WebcamEnabled;
         var clickEngine = clickHighlight ? _clickEngine : null;
+
+        // 共享摄像头实例：session 和 overlay 共用同一个，避免双重占用
+        WebcamCapture? sharedWebcam = null;
+        if (webcamEnabled)
+        {
+            try
+            {
+                sharedWebcam = new WebcamCapture();
+                sharedWebcam.Start(string.IsNullOrWhiteSpace(_settings.WebcamDeviceId) ? null : _settings.WebcamDeviceId);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "摄像头打开失败：" + ex.Message, "QSrcRecorder",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                sharedWebcam = null;
+            }
+        }
 
         _starting = true;
         SetStatus("正在启动录制…");
@@ -308,7 +327,7 @@ public partial class MainView : Window
             // D3D/WGC/等首帧/硬编探测/ffmpeg 拉起都较重；WGC 使用 CreateFreeThreaded，可在后台线程初始化
             session = await Task.Run(() =>
             {
-                var s = new RecordingSession(opts, ffmpeg, clickEngine, clickColor, mouseHighlight);
+                var s = new RecordingSession(opts, ffmpeg, clickEngine, clickColor, mouseHighlight, sharedWebcam);
                 s.Start();
                 return s;
             }).ConfigureAwait(true);
@@ -342,6 +361,23 @@ public partial class MainView : Window
                         $"[{DateTime.Now:HH:mm:ss.fff}] _spot 创建失败: {ex}\n");
                 }
             }
+
+            // 画中画预览覆盖层：录制时可见位置，用户可拖动/缩放调整框位
+            if (sharedWebcam != null && _session != null)
+            {
+                try
+                {
+                    _pipOverlay = new PipOverlayWindow(sharedWebcam);
+                    _pipOverlay.Show();
+                    _pipOverlay.Start();
+                }
+                catch (Exception ex)
+                {
+                    System.IO.File.AppendAllText(
+                        System.IO.Path.Combine(AppContext.BaseDirectory, "pip_overlay_diag.log"),
+                        $"[{DateTime.Now:HH:mm:ss.fff}] 画中画覆盖层创建失败: {ex}\n");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -351,6 +387,8 @@ public partial class MainView : Window
             _bar = null;
             _spot?.Close();
             _spot = null;
+            _pipOverlay?.HideAndClear();
+            _pipOverlay = null;
             if (!_trayVisible)
             {
                 Show();

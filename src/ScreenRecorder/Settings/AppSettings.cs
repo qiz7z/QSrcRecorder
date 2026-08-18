@@ -47,6 +47,16 @@ public sealed class AppSettings
     public int WebcamSizeIndex { get; set; } = 1;
     /// <summary>摄像头画面水平镜像。</summary>
     public bool WebcamMirror { get; set; } = true;
+    /// <summary>画中画使用自定义位置（true）还是预设角落（false）。</summary>
+    public bool WebcamCustomPosition { get; set; }
+    /// <summary>画中画左上角 X 相对屏幕宽度的比例（0~1），自定义模式下有效。</summary>
+    public double WebcamPosX { get; set; } = 0.75;
+    /// <summary>画中画左上角 Y 相对屏幕高度的比例（0~1），自定义模式下有效。</summary>
+    public double WebcamPosY { get; set; } = 0.75;
+    /// <summary>画中画宽度相对屏幕宽度的比例（0~1），自定义模式下有效。</summary>
+    public double WebcamSizeW { get; set; } = 0.22;
+    /// <summary>画中画高度相对屏幕高度的比例（0~1），自定义模式下有效。</summary>
+    public double WebcamSizeH { get; set; } = 0.16;
 
     private static string FolderPath
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QSrcRecorder");
