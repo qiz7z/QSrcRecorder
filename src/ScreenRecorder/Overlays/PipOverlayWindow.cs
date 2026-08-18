@@ -167,8 +167,7 @@ public sealed class PipOverlayWindow : Window
         _resizeEdge = ResizeEdge.None;
         Cursor = System.Windows.Input.Cursors.Hand;
         // 拖拽结束，恢复刷新
-        if (_started)
-            _timer.Start();
+        _timer.Start();
     }
 
     private void OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
