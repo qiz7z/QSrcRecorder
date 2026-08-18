@@ -399,13 +399,13 @@ public partial class MainView : Window
                 }
             }
 
-            // 画中画预览覆盖层：录制时可见位置，用户可拖动/缩放调整框位
+            // 画中画预览覆盖层：录制时隐藏（避免被 WGC 捕获进成片），录制结束后显示供用户调整位置
             if (sharedWebcam != null && _session != null)
             {
                 try
                 {
                     _pipOverlay = new PipOverlayWindow(sharedWebcam);
-                    _pipOverlay.Show();
+                    _pipOverlay.HideAndClear(); // 录制时隐藏，不在画面中
                     _pipOverlay.Start();
                 }
                 catch (Exception ex)
