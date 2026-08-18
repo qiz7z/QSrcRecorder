@@ -277,66 +277,36 @@
 
             <!-- 左栏 -->
             <DockPanel Grid.Column="0">
-                <Button x:Name="RecordButton" DockPanel.Dock="Bottom" Height="54" Cursor="Hand" Click="RecordButton_Click">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="bd" CornerRadius="10" RenderTransformOrigin="0.5,0.5">
-                                <Border.RenderTransform>
-                                    <ScaleTransform x:Name="btnScale" ScaleX="1" ScaleY="1"/>
-                                </Border.RenderTransform>
-                                <Border.Background>
-                                    <SolidColorBrush x:Name="bgBrush" Color="#DC2626"/>
-                                </Border.Background>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <Ellipse Width="11" Height="11" Fill="White" Margin="0,1,10,0" Opacity="0.95"/>
-                                    <TextBlock x:Name="txt" Text="开始录制" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
-                                    <Border BorderBrush="#66FFFFFF" BorderThickness="1" CornerRadius="5" Margin="14,0,0,0" Padding="8,3">
-                                        <TextBlock Text="F9" Foreground="White" FontSize="11.5" FontWeight="SemiBold"/>
-                                    </Border>
-                                </StackPanel>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <!-- 悬停：纯色加深，150ms 平滑过渡 -->
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Trigger.EnterActions>
-                                        <BeginStoryboard>
-                                            <Storyboard>
-                                                <ColorAnimation Storyboard.TargetName="bgBrush" Storyboard.TargetProperty="Color" To="#B91C1C" Duration="0:0:0.15"/>
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </Trigger.EnterActions>
-                                    <Trigger.ExitActions>
-                                        <BeginStoryboard>
-                                            <Storyboard>
-                                                <ColorAnimation Storyboard.TargetName="bgBrush" Storyboard.TargetProperty="Color" To="#DC2626" Duration="0:0:0.15"/>
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </Trigger.ExitActions>
-                                </Trigger>
-                                <!-- 按下：轻微缩小 + 颜色更深 -->
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Trigger.EnterActions>
-                                        <BeginStoryboard>
-                                            <Storyboard>
-                                                <DoubleAnimation Storyboard.TargetName="btnScale" Storyboard.TargetProperty="ScaleX" To="0.98" Duration="0:0:0.06"/>
-                                                <DoubleAnimation Storyboard.TargetName="btnScale" Storyboard.TargetProperty="ScaleY" To="0.98" Duration="0:0:0.06"/>
-                                                <ColorAnimation Storyboard.TargetName="bgBrush" Storyboard.TargetProperty="Color" To="#9C1A1A" Duration="0:0:0.06"/>
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </Trigger.EnterActions>
-                                    <Trigger.ExitActions>
-                                        <BeginStoryboard>
-                                            <Storyboard>
-                                                <DoubleAnimation Storyboard.TargetName="btnScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.1"/>
-                                                <DoubleAnimation Storyboard.TargetName="btnScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.1"/>
-                                                <ColorAnimation Storyboard.TargetName="bgBrush" Storyboard.TargetProperty="Color" To="#DC2626" Duration="0:0:0.1"/>
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </Trigger.ExitActions>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
+                <Button x:Name="RecordButton" DockPanel.Dock="Bottom" Height="54" Cursor="Hand" Click="RecordButton_Click"
+                        Background="#DC2626" BorderBrush="Transparent" Foreground="White" FontSize="15" FontWeight="SemiBold">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Ellipse Width="11" Height="11" Fill="White" Margin="0,0,10,0" Opacity="0.95"/>
+                        <TextBlock Text="开始录制" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
+                        <Border BorderBrush="#66FFFFFF" BorderThickness="1" CornerRadius="5" Margin="14,0,0,0" Padding="8,3">
+                            <TextBlock Text="F9" Foreground="White" FontSize="11.5" FontWeight="SemiBold"/>
+                        </Border>
+                    </StackPanel>
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" CornerRadius="10" Background="{TemplateBinding Background}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#B91C1C"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#9C1A1A"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
                 </Button>
                 <StackPanel Margin="0,0,0,10">
                     <RadioButton x:Name="ModeFull" Style="{StaticResource ModeCard}" IsChecked="True"
