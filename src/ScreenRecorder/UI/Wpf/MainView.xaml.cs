@@ -526,6 +526,8 @@ public partial class MainView : Window
             _bar = null;
             _spot?.Close();
             _spot = null;
+            _pipOverlay?.HideAndClear();
+            _pipOverlay = null;
             _session = null;
 
             // 双显卡笔记本上硬编可能间歇不可用：刚起步失败时自动改软编按原参数重录一次
