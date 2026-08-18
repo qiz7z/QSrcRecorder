@@ -399,13 +399,13 @@ public partial class MainView : Window
                 }
             }
 
-            // 画中画预览覆盖层：录制时可见（已通过 DWMWA_EXCLUDED_FROM_CAPTURE 排除捕获）
+            // 画中画预览覆盖层：录制时隐藏（避免被捕获），录制结束后显示供用户调整位置
             if (sharedWebcam != null && _session != null)
             {
                 try
                 {
                     _pipOverlay = new PipOverlayWindow(sharedWebcam);
-                    _pipOverlay.Show(); // 显示窗口供用户预览
+                    _pipOverlay.HideAndClear(); // 录制时隐藏，不在画面中
                     _pipOverlay.Start();
                 }
                 catch (Exception ex)
@@ -526,8 +526,8 @@ public partial class MainView : Window
             _bar = null;
             _spot?.Close();
             _spot = null;
-            _pipOverlay?.HideAndClear();
-            _pipOverlay = null;
+            // 录制结束后显示画中画预览窗口，供用户调整位置
+            _pipOverlay?.RestoreAndResume();
             _session = null;
 
             // 双显卡笔记本上硬编可能间歇不可用：刚起步失败时自动改软编按原参数重录一次
