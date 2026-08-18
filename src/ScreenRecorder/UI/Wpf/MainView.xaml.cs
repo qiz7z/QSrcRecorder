@@ -526,8 +526,9 @@ public partial class MainView : Window
             _bar = null;
             _spot?.Close();
             _spot = null;
-            // 录制结束后显示画中画预览窗口，供用户调整位置
-            _pipOverlay?.RestoreAndResume();
+            // 录制结束后关闭画中画预览窗口
+            _pipOverlay?.HideAndClear();
+            _pipOverlay = null;
             _session = null;
 
             // 双显卡笔记本上硬编可能间歇不可用：刚起步失败时自动改软编按原参数重录一次
