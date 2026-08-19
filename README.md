@@ -1,148 +1,291 @@
 # QSrcRecorder · 拾光留影
 
-一个 Windows 轻量级录屏工具：单文件夹绿色运行、不录制时零资源占用、优先使用显卡硬件编码。
-界面为浅色卡片式设计：浅灰底、白色圆角卡片、线性图标模式选择、柔和蓝色选中态与朱红主按钮。
+<p align="center">
+  <img src="docs/screenshot.png" alt="QSrcRecorder 界面截图" width="600"/>
+</p>
 
-## 当前版本：v0.2
+<p align="center">
+  <strong>一个 Windows 轻量级录屏工具</strong><br/>
+  单文件夹绿色运行 · 摄像头画中画 · 多声道音频 · 音效调节
+</p>
 
-| 功能 | 状态 |
-|---|---|
-| 全屏 / 区域 / 窗口录制 | ✅ |
-| H.264 MP4 输出（faststart） | ✅ |
-| 硬件编码自动检测（NVENC / QuickSync / AMF）+ 软编 x264 兜底 | ✅ |
-| 帧率（24/30/60）、画质（高/中/低）、分辨率缩放（100%/75%/50%） | ✅ |
-| 暂停 / 继续（暂停的时间不进成片） | ✅ |
-| 快捷键：F9 开始/停止，F10 暂停/继续 | ✅ |
-| 录制悬浮条（闲置自动淡化）、录制时长显示 | ✅ |
-| 设置持久化、自动打开输出文件夹 | ✅ |
-| 系统声音录制（WASAPI Loopback，无需虚拟声卡） | ✅ |
-| 麦克风录制（WASAPI Capture，设备原生格式） | ✅ |
-| 双声道独立音效（音量 / 人声降噪门 / 系统低音·高音） | ✅ |
-| 鼠标点击高亮（合帧光圈，颜色可自选） | ✅ |
-| 鼠标跟随圆（常驻高亮，颜色与点击高亮共用） | ✅ |
-| 摄像头人像画中画（设备 / 位置 / 大小 / 镜像） | ✅ |
-| 定时自动停止 | 🚧 后续规划 |
+<p align="center">
+  <a href="https://github.com/qiz7z/QSrcRecorder/releases"><img src="https://img.shields.io/github/v/release/qiz7z/QSrcRecorder?style=flat-square" alt="版本"/></a>
+  <a href="https://github.com/qiz7z/QSrcRecorder/releases"><img src="https://img.shields.io/github/downloads/qiz7z/QSrcRecorder/total?style=flat-square" alt="下载量"/></a>
+  <a href="https://github.com/qiz7z/QSrcRecorder/stargazers"><img src="https://img.shields.io/github/stars/qiz7z/QSrcRecorder?style=flat-square" alt="星标"/></a>
+  <a href="https://github.com/qiz7z/QSrcRecorder/blob/main/LICENSE"><img src="https://img.shields.io/github/license/qiz7z/QSrcRecorder?style=flat-square" alt="许可证"/></a>
+  <a href="https://github.com/qiz7z/QSrcRecorder/issues"><img src="https://img.shields.io/github/issues/qiz7z/QSrcRecorder?style=flat-square" alt="问题"/></a>
+</p>
+
+---
+
+## 简介
+
+**QSrcRecorder（拾光留影）** 是一款面向 Windows 的轻量级屏幕录制工具，专注于：
+
+- **简洁易用** — 单文件夹绿色运行，无需安装
+- **高质量录制** — 硬件编码 + 软件兜底，稳定高效
+- **多功能音频** — 系统声音 / 麦克风独立录制，支持音效调节
+- **摄像头画中画** — 录制时实时预览，成片自动叠加
+
+### 适用场景
+
+| 场景 | 说明 |
+|------|------|
+| 在线教学 | 摄像头 + 屏幕同步录制 |
+| 游戏录制 | 低延迟、高帧率 |
+| 软件演示 | 窗口/区域精准录制 |
+| 会议记录 | 系统声音 + 人声双通道 |
+
+---
+
+## 功能特性
+
+### 核心功能
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| 全屏录制 | ✅ | 捕获整个显示器 |
+| 区域录制 | ✅ | 框选特定区域录制 |
+| 窗口录制 | ✅ | 指定应用窗口录制 |
+| H.264 MP4 输出 | ✅ | faststart 优化，支持流式播放 |
+| 硬件编码 | ✅ | NVENC / QuickSync / AMF 自动选择 |
+| 软件编码兜底 | ✅ | 硬编失败时自动切换 libx264 |
+| 帧率可选 | ✅ | 24 / 30 / 60 fps |
+| 画质调节 | ✅ | 高 / 中 / 低 三档 |
+| 分辨率缩放 | ✅ | 100% / 75% / 50%，降低带宽 |
+
+### 音频功能
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| 系统声音录制 | ✅ | WASAPI Loopback，无需虚拟声卡 |
+| 麦克风录制 | ✅ | WASAPI Capture，设备原生格式 |
+| 独立音量调节 | ✅ | 麦克风 / 系统声音分别控制 |
+| 降噪门 | ✅ | 过滤环境底噪 |
+| 低音 / 高音 | ✅ | 系统声音频响调节 |
+| 音频合成 | ✅ | 录制结束后 ffmpeg 合并 |
+
+### 增强功能
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| 摄像头画中画 | ✅ | 右下角叠加，可拖动调整 |
+| 鼠标点击高亮 | ✅ | 光圈动画，颜色可自定义 |
+| 鼠标跟随圆 | ✅ | 常驻高亮，提升演示效果 |
+| 快捷键支持 | ✅ | F9 开始/停止，F10 暂停/继续 |
+| 录制悬浮条 | ✅ | 显示时长，可隐藏收进托盘 |
+| 设置持久化 | ✅ | 自动保存所有配置 |
+
+### 即将推出
+
+| 功能 | 计划版本 |
+|------|----------|
+| 定时自动停止 | v0.3 |
+| 录制倒计时 | v0.3 |
+| 多显示器支持 | v0.3 |
+| 摄像头美颜 | v0.4 |
+| 录制历史列表 | v1.0 |
+| 安装包发布 | v1.0 |
+
+---
 
 ## 环境要求
 
-- Windows 10 1903+ / Windows 11（窗口捕获与去黄框体验在 Win11 上最佳）
-- 运行：无需安装任何东西（绿色版自带 ffmpeg 与 .NET 运行时）
-- 开发构建：.NET 8 SDK
+### 运行环境
 
-## 构建与运行
+- **操作系统**：Windows 10 1903+ / Windows 11
+- **运行时**：自带 .NET 8 运行时（自包含版本）
+- **显卡**：支持 DirectX 11 及以上（硬件编码需要）
+
+### 开发环境
+
+- **.NET 8 SDK** — 用于编译和调试
+- **ffmpeg** — 内置于 `tools/ffmpeg/` 目录
+
+---
+
+## 快速开始
+
+### 方式一：直接运行（推荐）
+
+1. 从 [Releases](https://github.com/qiz7z/QSrcRecorder/releases) 下载 `QSrcRecorder-v0.2.exe`
+2. 双击运行即可，无需安装
+
+### 方式二：本地构建
 
 ```bash
-# 开发运行
+# 克隆仓库
+git clone https://github.com/qiz7z/QSrcRecorder.git
+cd QSrcRecorder
+
+# 构建并发布（自包含 exe）
+dotnet publish src/ScreenRecorder -c Release -r win-x64 --self-contained true -o publish
+
+# 运行
+./publish/QSrcRecorder.exe
+```
+
+### 方式三：开发调试
+
+```bash
+# 直接运行（需要 .NET 8 运行时）
 dotnet run --project src/ScreenRecorder
 
-# 单元测试
+# 运行单元测试
 dotnet test src/ScreenRecorder.Tests
 
-# 端到端冒烟测试（录制主显示器 3 秒并校验 MP4）
+# 端到端冒烟测试
 dotnet run --project src/ScreenRecorder.Smoke -c Release
-
-# 发布绿色版（自包含，目标机器免装 .NET）
-dotnet publish src/ScreenRecorder -c Release -r win-x64 --self-contained true -o publish
 ```
 
-`ffmpeg.exe` / `ffprobe.exe` 从 `tools/ffmpeg/` 自动复制到输出目录；程序也支持从自身目录或 PATH 中查找，可自行替换更精简的构建。
+---
 
-## 音频说明（v0.2）
+## 快捷键
 
-- **系统声音**：`WasapiLoopbackCapture`，捕获当前播放设备回环；使用设备原生采样格式，避免空 WAV。
-- **麦克风**：`WasapiCapture`，使用设备原生格式（比 WinMM `WaveIn` 在 Realtek 阵列等硬件上更可靠）。
-- **合成**：录制结束后由 ffmpeg `filter_complex` 将视频与音频 mux；双通道时 `amix` 混合，并做 `aformat` 统一为立体声 16-bit 44.1 kHz。
-- **音效（可折叠面板）**
-  - 麦克风：音量、噪声门（`agate`，默认关闭）
-  - 系统声音：音量、低音 / 高音（`bass` / `treble`）
-- 仅勾选麦克风或仅勾选系统声音时同样输出有声视频；两路都关则输出无声视频。
+| 快捷键 | 功能 |
+|--------|------|
+| `F9` | 开始 / 停止录制 |
+| `F10` | 暂停 / 继续录制 |
 
-## 点击 / 鼠标高亮（v0.2）
+---
 
-- **点击高亮**：低级鼠标钩子捕获左键按下，在采集帧 BGRA 缓冲上绘制扩散光圈（软件合帧，全屏 / 区域 / 窗口均生效）。
-- **鼠标跟随圆**：录制期间屏上半透明跟随圆（覆盖层），颜色与点击高亮共用色轮 / 预设色。
-- 颜色：预设色块 + 自定义 `#RRGGBB`，设置持久化。
-
-## 摄像头人像画中画
-
-- 勾选「同时录制摄像头人像」后，在成片角落叠摄像头画面（软件合帧，进文件）。
-- 可选：设备、位置（四角）、大小（小/中/大）、水平镜像。
-- 无摄像头或打开失败时跳过人像，屏幕录制照常进行，并在结束时提示警告。
-- 采集：WinRT `MediaCapture` + `MediaFrameReader`；布局与 blit 见 `PipCompositor`。
-
-## 架构
+## 架构设计
 
 ```
-UI (WPF MainView)            主界面 / 参数卡片 / 音效与高亮设置
-    │
-Overlays (WinForms)          区域选框 / 窗口选择 / 录制悬浮条 / 鼠标跟随圆
-    │
-RecordingSession             一次录制的编排：定帧率循环、暂停、音视频收尾
-    ├─ WgcCapture            Windows Graphics Capture 帧池（CsWin32 生成 D3D11 互操作）
-    │                        GPU 拷贝 → 暂存纹理 → 回读 BGRA（支持帧池级缩放）
-    ├─ ClickHighlightEngine  鼠标钩子 + 帧内绘制点击光圈
-    ├─ AudioCapture          麦克风 WASAPI Capture → WAV
-    ├─ SystemAudioCapture    系统声音 WASAPI Loopback → WAV
-    └─ FrameWriterQueue      独立写线程 + 有界缓冲（编码跟不上时丢最旧帧）
-         │
-         FfmpegVideoEncoder  BGRA 帧经 stdin 管道送 ffmpeg → H.264 MP4
-         │
-         （可选）ffmpeg mux   视频 + 系统/麦克风音频 filter_complex → 最终 MP4
+┌─────────────────────────────────────────────────────────────┐
+│                         UI 层 (WPF)                        │
+│  MainView · 参数卡片 · 摄像头设置 · 音效面板 · 点击高亮      │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────┐
+│                      会话控制层                              │
+│  RecordingSession · RecordingOptions · RecordingResult      │
+└─────────┬───────────────────────┬───────────────────────────┘
+          │                       │
+┌─────────▼──────────┐  ┌─────────▼──────────┐
+│    采集引擎         │  │    音频捕获          │
+│  WgcCapture        │  │  AudioCapture      │
+│  (Windows Graphics │  │  SystemAudioCapture│
+│   Capture)         │  │  (WASAPI)          │
+└─────────┬──────────┘  └─────────┬──────────┘
+          │                       │
+┌─────────▼───────────────────────▼──────────┐
+│                    编码器                   │
+│         FfmpegVideoEncoder                  │
+│    (NVENC / QSV / AMF / libx264)           │
+└────────────────────────────────────────────┘
 ```
 
-关键设计：
+### 关键设计决策
 
-- **采集**走 Windows Graphics Capture（系统 API，硬件加速，无需驱动）；
-  D3D11 COM 调用由 CsWin32 从官方元数据生成。
-- **编码**交给 ffmpeg 子进程：NVENC 等硬编优先，早期编码器失败时自动软编（libx264）重试。
-- **恒定帧率**：采集循环按目标帧率推帧，无新帧时复用上一帧；暂停即停帧。
-- **窗口大小变化**时录制自动收尾，避免花屏文件。
-- **音频与视频分离录制再合成**，避免实时混音拖累采集线程；mux 前后校验视频流，避免「只有声音没有画面」的坏文件覆盖有效成片。
+1. **软件合帧** — 摄像头 / 点击高亮直接绘制到帧缓冲，不依赖屏上覆盖层，确保窗口模式也能生效
+2. **双缓冲队列** — 采集线程与编码线程分离，避免丢帧
+3. **硬编兜底** — NVENC 失败时自动切换 libx264，保证录制成功率
+4. **WASAPI 原生** — 麦克风使用设备原生格式，避免 WinMM 立体声兼容问题
 
-## 性能说明（实测：2560×1600 屏幕 + NVENC）
+---
 
-- 采集回读约 4~5ms/帧，日常负载很低。
-- 100% 分辨率下 BGRA 原始帧约 16.7MB/帧，管道带宽是瓶颈；
-  **2K/4K 屏幕建议在界面选 75% 或 50% 分辨率**（GPU 侧缩放），可稳定满 30fps。
-- 静止桌面录制时 GPU 可能保持低频，导致前几秒丢帧率升高，属正常现象。
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| UI | WPF + WinForms 混合 |
+| 采集 | Windows Graphics Capture (WGC) |
+| 编码 | ffmpeg (NVENC / QSV / AMF / libx264) |
+| 音频 | NAudio (WASAPI) |
+| 互操作 | CsWin32 (D3D11 / WinRT) |
+| 测试 | xUnit |
+
+---
 
 ## 已知限制
 
-- 受 DRM 保护的内容（Netflix 等）按系统规则录出来是黑屏，所有录屏软件一致。
-- Win10 21H1 及更早系统上录制会有系统绘制的黄色边框（无法关闭）。
-- 区域选择在单个显示器内进行；跨屏区域暂不支持。
-- 暂停期间画面停帧（时长不含暂停时间），不支持暂停时插入定格画面。
-- 录制悬浮条会出现在画面右下角（闲置 3 秒后自动淡化到 35% 透明度，鼠标靠近恢复）。
-  早期版本用 `DWMWA_EXCLUDED_FROM_CAPTURE` 把悬浮条排除在捕获外，但部分 Win11 版本上
-  被排除的窗口不会重新合成，屏幕上秒数永远停在第一帧，已移除该做法。
-- 双显卡环境下 NVENC 偶发早期失败时会自动切软编重试，成片编码方式可能与所选不完全一致。
+- DRM 保护内容（Netflix 等）会录制为黑屏，属系统限制
+- Windows 10 21H1 及更早版本会出现黄色窗口边框
+- 区域选择仅支持单显示器
+- 暂停期间不支持插入定格画面
+- 录制悬浮条默认显示在右下角，无法自定义位置
+
+---
 
 ## 路线图
 
-- **v0.3**：定时自动停止、录制倒计时、多显示器区域
-- **v1.0**：绿色版 + 安装包、录制历史列表、GPU 侧色彩空间转换（进一步降低管道压力）
+```mermaid
+gantt
+    title QSrcRecorder 版本规划
+    dateFormat  YYYY-MM
+    section v0.2 (已完成)
+    多声道音频          :done,    a1, 2024-07, 2024-08
+    摄像头画中画        :done,    a2, after a1, 1m
+    音效调节           :done,    a3, after a2, 1m
+    点击/鼠标高亮      :done,    a4, after a3, 1m
+    
+    section v0.3 (规划中)
+    定时自动停止        :active,  b1, 2025-01, 2m
+    多显示器支持        :         b2, after b1, 1m
+    录制倒计时          :         b3, after b2, 1m
+    
+    section v1.0 (规划中)
+    安装包发布          :         c1, 2025-06, 2m
+    录制历史列表        :         c2, after c1, 2m
+    性能优化            :         c3, after c2, 2m
+```
+
+---
 
 ## 项目结构
 
 ```
-src/
-├─ ScreenRecorder/            # 主程序（WPF + WinForms 混合，输出 QSrcRecorder.exe）
-│  ├─ Interop/                # WGC / D3D11 / Win32 互操作
-│  ├─ Capture/                # WGC 采集、摄像头、画中画合帧
-│  ├─ Encoding/               # ffmpeg 进程管理、参数构建、硬编探测
-│  ├─ Audio/                  # 麦克风 / 系统声音 WASAPI 捕获
-│  ├─ Overlays/               # 区域选择、悬浮条、点击高亮、鼠标跟随
-│  ├─ UI/Wpf/                 # 主界面、窗口选择器、颜色轮
-│  └─ Settings/               # 设置持久化
-├─ ScreenRecorder.Tests/      # 单元测试（xunit）
-└─ ScreenRecorder.Smoke/      # 端到端冒烟测试（真实录制并校验）
-tools/ffmpeg/                 # 内置 ffmpeg（构建时自动复制）
-docs/                         # 设计系统等文档
+QSrcRecorder/
+├── src/
+│   ├── ScreenRecorder/          # 主程序
+│   │   ├── Assets/              # 图标资源
+│   │   ├── Audio/               # 音频捕获 (WASAPI)
+│   │   ├── Capture/             # 屏幕采集 (WGC + D3D11)
+│   │   ├── Encoding/            # 编码器 (ffmpeg)
+│   │   ├── Interop/             # Win32 / WinRT 互操作
+│   │   ├── Overlays/            # 覆盖层 (悬浮条、点击高亮、画中画)
+│   │   ├── Settings/            # 配置持久化
+│   │   └── UI/Wpf/              # WPF 主界面
+│   ├── ScreenRecorder.Tests/    # 单元测试
+│   └── ScreenRecorder.Smoke/    # 冒烟测试
+├── tools/
+│   └── ffmpeg/                  # 内置 ffmpeg
+├── docs/
+│   └── design-system.md         # 设计系统文档
+└── README.md
 ```
 
-## 界面设计系统
+---
 
-完整设计规范见 `docs/design-system.md`（Swiss Minimalism 风格、"录制红 + 波形蓝"配色）。
-主界面为 **WPF**（`src/ScreenRecorder/UI/Wpf/MainView.xaml`）：矢量圆角卡片、投影、
-悬停动效、矢量图标；录制悬浮条与区域/窗口选择器仍为 WinForms（互操作共存）。
-录制引擎与会话逻辑与 UI 层完全解耦。
+## 贡献指南
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+---
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE) 开源。
+
+---
+
+## 致谢
+
+- [ffmpeg](https://ffmpeg.org/) — 强大的音视频处理工具
+- [NAudio](https://github.com/naudio/NAudio) — .NET 音频库
+- [Windows Graphics Capture](https://learn.microsoft.com/en-us/windows/win32/winprog/using-windows-graphic-capture) — Windows 系统 API
+- [ui-ux-pro-max](https://github.com/uiux-pro-max) — UI/UX 设计智能
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ by <a href="https://github.com/qiz7z">qiz7z</a></sub>
+</p>
