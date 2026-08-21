@@ -1,8 +1,8 @@
 # QSrcRecorder · 拾光留影
 
-<p align="center">
+<!-- <p align="center">
   <img src="docs/screenshot.png" alt="QSrcRecorder 界面截图" width="600"/>
-</p>
+</p> -->
 
 <p align="center">
   <strong>一个 Windows 轻量级录屏工具</strong><br/>
