@@ -9,14 +9,6 @@
   单文件夹绿色运行 · 摄像头画中画 · 多声道音频 · 音效调节
 </p>
 
-<p align="center">
-  <a href="https://github.com/qiz7z/QSrcRecorder/releases"><img src="https://img.shields.io/github/v/release/qiz7z/QSrcRecorder?style=flat-square" alt="版本"/></a>
-  <a href="https://github.com/qiz7z/QSrcRecorder/releases"><img src="https://img.shields.io/github/downloads/qiz7z/QSrcRecorder/total?style=flat-square" alt="下载量"/></a>
-  <a href="https://github.com/qiz7z/QSrcRecorder/stargazers"><img src="https://img.shields.io/github/stars/qiz7z/QSrcRecorder?style=flat-square" alt="星标"/></a>
-  <a href="https://github.com/qiz7z/QSrcRecorder/blob/main/LICENSE"><img src="https://img.shields.io/github/license/qiz7z/QSrcRecorder?style=flat-square" alt="许可证"/></a>
-  <a href="https://github.com/qiz7z/QSrcRecorder/issues"><img src="https://img.shields.io/github/issues/qiz7z/QSrcRecorder?style=flat-square" alt="问题"/></a>
-</p>
-
 ---
 
 ## 简介
