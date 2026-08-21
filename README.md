@@ -203,26 +203,11 @@ dotnet run --project src/ScreenRecorder.Smoke -c Release
 
 ## 路线图
 
-```mermaid
-gantt
-    title QSrcRecorder 版本规划
-    dateFormat  YYYY-MM
-    section v0.2 (已完成)
-    多声道音频          :done,    a1, 2024-07, 2024-08
-    摄像头画中画        :done,    a2, after a1, 1m
-    音效调节           :done,    a3, after a2, 1m
-    点击/鼠标高亮      :done,    a4, after a3, 1m
-    
-    section v0.3 (规划中)
-    定时自动停止        :active,  b1, 2025-01, 2m
-    多显示器支持        :         b2, after b1, 1m
-    录制倒计时          :         b3, after b2, 1m
-    
-    section v1.0 (规划中)
-    安装包发布          :         c1, 2025-06, 2m
-    录制历史列表        :         c2, after c1, 2m
-    性能优化            :         c3, after c2, 2m
-```
+| 版本 | 状态 | 功能 |
+|------|------|------|
+| v0.2 | ✅ 已完成 | 多声道音频、摄像头画中画、音效调节、点击/鼠标高亮 |
+| v0.3 | 🚧 规划中 | 定时自动停止、多显示器支持、录制倒计时 |
+| v1.0 | 📋 规划中 | 安装包发布、录制历史列表、性能优化 |
 
 ---
 
