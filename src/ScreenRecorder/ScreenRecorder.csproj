@@ -11,10 +11,14 @@
     <AssemblyName>QSrcRecorder</AssemblyName>
     <RootNamespace>ScreenRecorder</RootNamespace>
     <Product>QSrcRecorder</Product>
-    <AssemblyTitle>QSrcRecorder 拾光留影</AssemblyTitle>
+    <AssemblyTitle>QSrcRecorder</AssemblyTitle>
     <ApplicationIcon>Assets\QSrcRecorder.ico</ApplicationIcon>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,11 +33,12 @@
 
   <ItemGroup>
     <Resource Include="Assets\QSrcRecorder.ico" />
+    <Resource Include="Assets\hud-bg.png" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\tools\ffmpeg\ffmpeg.exe" Link="ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\tools\ffmpeg\ffprobe.exe" Link="ffprobe.exe" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\tools\ffmpeg\ffmpeg.exe" Link="ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\tools\ffmpeg\ffprobe.exe" Link="ffprobe.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" Visible="false" />
   </ItemGroup>
 
 </Project>

@@ -188,6 +188,8 @@ public static partial class Win32Native
     /// <summary>让窗口不出现在任何屏幕捕获中（录制悬浮条使用，避免被录进画面）。</summary>
     public static void ExcludeFromCapture(IntPtr hwnd)
     {
+        if (hwnd == IntPtr.Zero)
+            return;
         int v = 1;
         _ = DwmSetWindowAttribute(hwnd, DWMWA_EXCLUDED_FROM_CAPTURE, ref v, sizeof(int));
     }

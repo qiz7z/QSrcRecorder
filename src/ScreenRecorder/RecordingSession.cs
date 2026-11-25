@@ -474,13 +474,8 @@ public sealed class RecordingSession : IDisposable
         }
         catch
         {
-            if (_webcam != null)
-            {
-                _webcam.Stop();
-                if (_ownsWebcam)
-                    try { _webcam.Dispose(); } catch { }
-                _webcam = null;
-            }
+            // 共享摄像头由调用方持有（预览窗口还要用，失败时也由调用方释放）
+            ReleaseOwnedWebcam();
             _capture?.Dispose();
             _capture = null;
             _d3d.Dispose();
@@ -717,13 +712,8 @@ public sealed class RecordingSession : IDisposable
         // 停止音频 / 摄像头（仅内部创建的才 dispose）
         _audioCapture?.Stop(); _audioCapture?.Dispose(); _audioCapture = null;
         _systemAudioCapture?.Stop(); _systemAudioCapture?.Dispose(); _systemAudioCapture = null;
-        if (_webcam != null)
-        {
-            _webcam.Stop();
-            if (_ownsWebcam)
-                _webcam.Dispose();
-            _webcam = null;
-        }
+        // 共享实例不在这里 Stop：录制结束后预览窗口还要继续显示画面
+        ReleaseOwnedWebcam();
         _composeBuffer = null;
 
         if (encodeOk && AudioHasContent())
@@ -917,6 +907,18 @@ public sealed class RecordingSession : IDisposable
         string sysPart = string.IsNullOrEmpty(sysFilter) ? "[1:a]anull[sys]" : $"[1:a]{sysFilter}[sys]";
         string micPart = string.IsNullOrEmpty(micFilter) ? "[2:a]anull[mic]" : $"[2:a]{micFilter}[mic]";
         return $"{sysPart};{micPart};[sys][mic]amix=inputs=2:duration=shortest:dropout_transition=2[aout]";
+    }
+
+    /// <summary>只释放会话自己创建的摄像头。共享实例留给预览窗口。</summary>
+    private void ReleaseOwnedWebcam()
+    {
+        if (_webcam == null)
+            return;
+        if (_ownsWebcam)
+        {
+            try { _webcam.Dispose(); } catch { /* ignore */ }
+        }
+        _webcam = null;
     }
 
     public void Pause() => _paused = true;

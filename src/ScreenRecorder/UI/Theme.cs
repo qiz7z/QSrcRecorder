@@ -53,7 +53,9 @@ internal static class Theme
 
     // ── DWM 外观 ──
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    private const int DWMWA_BORDER_COLOR = 34;
     private const int DWMWA_CAPTION_COLOR = 35;
+    private const int DWMWA_TEXT_COLOR = 36;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWCP_ROUND = 2;
 
@@ -63,6 +65,22 @@ internal static class Theme
         _ = Win32Native.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
         int caption = (Surface.B << 16) | (Surface.G << 8) | Surface.R;
         _ = Win32Native.DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
+    }
+
+    /// <summary>
+    /// 深色标题栏：近黑底、青色标题字。沉浸式深色模式会把最小化/关闭按钮改成深底浅图标。
+    /// COLORREF 为 0x00BBGGRR。
+    /// </summary>
+    public static void ApplyDarkTitleBar(IntPtr hwnd)
+    {
+        int dark = 1;
+        _ = Win32Native.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+        int caption = 0x000C0705; // #05070C
+        int border = 0x0018100B;  // #0B1018
+        int text = 0x00FFF6E7;    // #E7F6FF，系统标题文字用浅色（自定义标题栏另绘华文隶书）
+        _ = Win32Native.DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
+        _ = Win32Native.DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref border, sizeof(int));
+        _ = Win32Native.DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, ref text, sizeof(int));
     }
 
     public static void RoundWindow(IntPtr hwnd)

@@ -46,13 +46,22 @@ using (var sg = Graphics.FromImage(sheet))
 WriteIco(Path.Combine(OutDir, "A_screen.ico"), RenderScreen);
 WriteIco(Path.Combine(OutDir, "B_camera.ico"), RenderCamera);
 WriteIco(Path.Combine(OutDir, "C_lens.ico"), RenderLens);
-WriteIco(AssetIco, RenderScreen); // 主方案：A，先安装到项目
+WriteIco(AssetIco, RenderAperture);
 
-// ── 像素校验（替代目视：验证构图/颜色符合设计） ──
-PixelCheck("A", RenderScreen(256), ('T', 2, 2), ('R', 60, 60), ('W', 128, 150), ('R', 168, 96));
-PixelCheck("B", RenderCamera(256), ('T', 2, 2), ('R', 60, 60), ('W', 80, 150), ('R', 128, 152));
-PixelCheck("C", RenderLens(256), ('T', 2, 2), ('R', 60, 60), ('W', 128, 60), ('R', 128, 128));
-Console.WriteLine($"完成：{OutDir}（拼图 + 3 个 ICO），主方案已写入 {AssetIco}");
+using (var sheet = new Bitmap(16 + 32 + 48 + 64 + 256 + 80, 280, PixelFormat.Format32bppArgb))
+using (var sg = Graphics.FromImage(sheet))
+{
+    sg.Clear(Color.FromArgb(12, 16, 24));
+    int x = 16;
+    foreach (int sz in new[] { 16, 32, 48, 64, 256 })
+    {
+        using var icon = RenderAperture(sz);
+        sg.DrawImage(icon, x, 16, sz, sz);
+        x += sz + 12;
+    }
+    sheet.Save(Path.Combine(OutDir, "preview_aperture.png"), ImageFormat.Png);
+}
+Console.WriteLine($"深色光圈图标已写入 {AssetIco}");
 
 // ══════════════ 绘制 ══════════════
 
@@ -194,6 +203,57 @@ static Bitmap RenderLens(int size)
         DrawLensHighlight(g, cx, cy, dotR);
     return bmp;
 }
+
+/// <summary>
+/// 扁平光圈：纯炭灰底、青色六瓣，没有渐变和高光。所有尺寸同一构图，供任务栏和页眉共用。
+/// </summary>
+static Bitmap RenderAperture(int size)
+{
+    float s = size;
+    var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+    using var g = Graphics.FromImage(bmp);
+    g.SmoothingMode = SmoothingMode.AntiAlias;
+    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+    g.Clear(Color.Transparent);
+
+    float inset = s * 0.04f;
+    var tile = new RectangleF(inset, inset, s - inset * 2f, s - inset * 2f);
+    using (var tilePath = RoundedRect(tile, s * 0.22f))
+    using (var bg = new SolidBrush(Color.FromArgb(255, 10, 16, 24)))
+        g.FillPath(bg, tilePath);
+
+    float cx = s * 0.5f;
+    float cy = s * 0.5f;
+    float outer = s * 0.34f;
+    float inner = s * 0.13f;
+    var cyan = Color.FromArgb(255, 34, 211, 238);
+
+    using var blades = new GraphicsPath();
+    const int count = 6;
+    for (int i = 0; i < count; i++)
+    {
+        double a0 = Math.PI * 2.0 / count * i - Math.PI / 2.0;
+        double a1 = a0 + Math.PI * 2.0 / count * 0.62;
+        double amid = a0 + Math.PI * 2.0 / count * 0.92;
+        blades.AddPolygon(new[]
+        {
+            Polar(cx, cy, outer, a0),
+            Polar(cx, cy, outer, a1),
+            Polar(cx, cy, inner * 1.15f, amid),
+        });
+    }
+    using (var fill = new SolidBrush(cyan))
+        g.FillPath(fill, blades);
+
+    float hole = inner * 0.72f;
+    using (var holeBrush = new SolidBrush(Color.FromArgb(255, 10, 16, 24)))
+        g.FillEllipse(holeBrush, cx - hole, cy - hole, hole * 2f, hole * 2f);
+
+    return bmp;
+}
+
+static PointF Polar(float cx, float cy, float r, double angle)
+    => new(cx + (float)Math.Cos(angle) * r, cy + (float)Math.Sin(angle) * r);
 
 // ══════════════ 工具 ══════════════
 

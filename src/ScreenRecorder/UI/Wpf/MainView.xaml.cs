@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media.Imaging;
 using ScreenRecorder.Capture;
 using ScreenRecorder.Encoding;
 using ScreenRecorder.Interop;
@@ -27,6 +29,8 @@ public partial class MainView : Window
     private RecordingBarForm? _bar;
     private ScreenRecorder.Overlays.MouseHighlightOverlay? _spot;
     private PipOverlayWindow? _pipOverlay;
+    private WebcamCapture? _previewWebcam;
+    private bool _closing;
     private RecordingOptions? _lastOptions;
     private bool _softwareRetryUsed;
     private bool _starting; // 防止启动过程中重复点击/热键
@@ -38,9 +42,22 @@ public partial class MainView : Window
     private System.Windows.Forms.ContextMenuStrip? _trayMenu;
     private bool _trayVisible;
 
+    /// <summary>页眉只用 ico 里的 32×32 帧，和任务栏小图标同一张，不放大 256 那一帧。</summary>
+    private static BitmapSource LoadIconFrame(int size)
+    {
+        var uri = new Uri("pack://application:,,,/Assets/QSrcRecorder.ico", UriKind.Absolute);
+        var decoder = BitmapDecoder.Create(uri, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        BitmapSource frame = decoder.Frames.FirstOrDefault(f => f.PixelWidth == size) ?? decoder.Frames[0];
+        if (frame.CanFreeze) frame.Freeze();
+        return frame;
+    }
+
     public MainView()
     {
         InitializeComponent();
+        var mark = LoadIconFrame(32);
+        CaptionMark.Source = mark;
+        CornerMark.Source = mark;
 
         // 静态选项（构造期填充，LoadSettings 之前必须就绪）
         CboFps.Items.Add("24");
@@ -56,15 +73,7 @@ public partial class MainView : Window
         CboQuality.Items.Add("低");
         CboQuality.SelectedIndex = 1;
 
-        CboWebcamCorner.Items.Add("右下");
-        CboWebcamCorner.Items.Add("左下");
-        CboWebcamCorner.Items.Add("右上");
-        CboWebcamCorner.Items.Add("左上");
-        CboWebcamCorner.SelectedIndex = 0;
-        CboWebcamSize.Items.Add("小");
-        CboWebcamSize.Items.Add("中");
-        CboWebcamSize.Items.Add("大");
-        CboWebcamSize.SelectedIndex = 1;
+        CboWebcamDevice.DisplayMemberPath = nameof(WebcamDeviceInfo.Name);
 
         Loaded += (_, _) =>
         {
@@ -77,7 +86,9 @@ public partial class MainView : Window
         };
         Closing += (_, _) =>
         {
+            _closing = true;
             SaveSettings();
+            ClosePipOverlay();
             _clickEngine.Stop();
             _tray?.Dispose();
             _tray = null;
@@ -116,7 +127,7 @@ public partial class MainView : Window
 
         _tray = new System.Windows.Forms.NotifyIcon
         {
-            Text = "QSrcRecorder 拾光留影",
+            Text = "QSrcRecorder",
             Icon = System.Drawing.Icon.ExtractAssociatedIcon(
                 System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!,
             ContextMenuStrip = _trayMenu,
@@ -178,6 +189,7 @@ public partial class MainView : Window
 
     private void ExitApp()
     {
+        _closing = true;
         try
         {
             _session?.Stop();
@@ -192,11 +204,22 @@ public partial class MainView : Window
         Close();
     }
 
+    private void Caption_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == MouseButtonState.Pressed)
+            DragMove();
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void CloseWindow_Click(object sender, RoutedEventArgs e) => Close();
+
     // ── 热键（挂在 WPF 窗口句柄上） ────────────────
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         var hwnd = new WindowInteropHelper(this).Handle;
+        ScreenRecorder.UI.Theme.ApplyDarkTitleBar(hwnd);
         _ = Win32Native.RegisterHotKey(hwnd, HotkeyToggle, 0, Win32Native.VK_F9);
         _ = Win32Native.RegisterHotKey(hwnd, HotkeyPause, 0, Win32Native.VK_F10);
         var source = HwndSource.FromHwnd(hwnd);
@@ -240,17 +263,11 @@ public partial class MainView : Window
     }
 
     // ── 录制流程 ───────────────────────────────────
-    private void RecordButton_Click(object sender, RoutedEventArgs e)
-    {
-        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] CLICK\n");
-        try { MessageBox.Show(this, "按钮点击了！开始录制...", "DEBUG", MessageBoxButton.OK); } catch { }
-        ToggleRecord();
-    }
+    private void RecordButton_Click(object sender, RoutedEventArgs e) => ToggleRecord();
 
     /// <summary>必须用 async void，确保异常能传播到 DispatcherUnhandledException 并弹窗。</summary>
     private async void ToggleRecord()
     {
-        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] TOGGLE: starting={_starting}, session={_session != null}\n");
         if (_starting)
             return;
         if (_session is { IsRecording: true })
@@ -261,11 +278,9 @@ public partial class MainView : Window
         try
         {
             await StartRecordingAsync();
-            System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: OK\n");
         }
         catch (Exception ex)
         {
-            System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: THREW {ex.GetType().Name}: {ex.Message}\n");
             MessageBox.Show(this, "录制启动失败：" + ex.Message, "QSrcRecorder", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -287,14 +302,9 @@ public partial class MainView : Window
     /// </summary>
     private async Task StartRecordingAsync(RecordingOptions? preset = null)
     {
-        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: enter\n");
         if (_starting || _session is { IsRecording: true })
-        {
-            System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: early return\n");
             return;
-        }
 
-        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: building opts\n");
         RecordingOptions opts;
         if (preset != null)
         {
@@ -304,14 +314,10 @@ public partial class MainView : Window
         {
             var built = BuildOptions();
             if (built == null)
-            {
-                System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: BuildOptions returned null\n");
                 return;
-            }
             opts = built;
             _softwareRetryUsed = false;
         }
-        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: opts={opts.Mode}\n");
         _lastOptions = opts;
 
         bool clickHighlight = _settings.ClickHighlight;
@@ -319,7 +325,9 @@ public partial class MainView : Window
         bool mouseHighlight = _settings.MouseHighlight;
         bool webcamEnabled = _settings.WebcamEnabled;
         var clickEngine = clickHighlight ? _clickEngine : null;
-        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcamEnabled={webcamEnabled}\n");
+
+        // 参数已确定后再关上一轮预览：取消框选时不拆掉窗口，开录前释放摄像头并避免被捕获
+        ClosePipOverlay();
 
         // 共享摄像头实例：session 和 overlay 共用同一个，避免双重占用
         // 摄像头初始化放后台线程，避免阻塞 UI 线程导致死锁
@@ -328,26 +336,20 @@ public partial class MainView : Window
         {
             try
             {
-                System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: starting webcam async\n");
                 sharedWebcam = await Task.Run(() =>
                 {
-                    System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam Task.Run start\n");
                     var wc = new WebcamCapture();
                     wc.Start(string.IsNullOrWhiteSpace(_settings.WebcamDeviceId) ? null : _settings.WebcamDeviceId);
-                    System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam Task.Run OK\n");
                     return wc;
                 }).ConfigureAwait(true);
-                System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam await completed\n");
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam FAILED: {ex.GetType().Name}: {ex.Message}\n");
                 MessageBox.Show(this, "摄像头打开失败：" + ex.Message, "QSrcRecorder",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 sharedWebcam = null;
             }
         }
-        System.IO.File.AppendAllText(@"C:\Users\liuqi\Desktop\qsrc_diag.txt", $"[{DateTime.Now:HH:mm:ss.fff}] SAR: webcam={sharedWebcam != null}\n");
 
         _starting = true;
         SetStatus("正在启动录制…");
@@ -399,20 +401,30 @@ public partial class MainView : Window
                 }
             }
 
-            // 画中画预览覆盖层：录制时隐藏（避免被捕获），录制结束后显示供用户调整位置
+            // 录制期间只创建、不显示、不刷新。句柄和排除捕获要等结束后的 Show。
             if (sharedWebcam != null && _session != null)
             {
                 try
                 {
-                    _pipOverlay = new PipOverlayWindow(sharedWebcam);
-                    _pipOverlay.HideAndClear(); // 录制时隐藏，不在画面中
-                    _pipOverlay.Start();
+                    _previewWebcam = sharedWebcam;
+                    sharedWebcam = null;
+                    _pipOverlay = new PipOverlayWindow(_previewWebcam);
+                    _pipOverlay.Closed += OnPipOverlayClosed;
+                    _pipOverlay.GeometryCommitted += (_, _) => SavePipGeometry();
+                    ApplySavedPipPlacement(_pipOverlay);
+                    _pipOverlay.HideAndClear();
                 }
                 catch (Exception ex)
                 {
                     System.IO.File.AppendAllText(
                         System.IO.Path.Combine(AppContext.BaseDirectory, "pip_overlay_diag.log"),
                         $"[{DateTime.Now:HH:mm:ss.fff}] 画中画覆盖层创建失败: {ex}\n");
+                    if (_pipOverlay != null)
+                    {
+                        try { _pipOverlay.Close(); } catch { /* ignore */ }
+                        _pipOverlay = null;
+                    }
+                    // 摄像头仍由正在进行的会话使用，留给录制结束时释放
                 }
             }
         }
@@ -424,8 +436,8 @@ public partial class MainView : Window
             _bar = null;
             _spot?.Close();
             _spot = null;
-            _pipOverlay?.HideAndClear();
-            _pipOverlay = null;
+            try { sharedWebcam?.Dispose(); } catch { /* ignore */ }
+            ClosePipOverlay();
             if (!_trayVisible)
             {
                 Show();
@@ -486,6 +498,11 @@ public partial class MainView : Window
             WebcamCorner = _settings.WebcamCorner,
             WebcamSizeIndex = Math.Clamp(_settings.WebcamSizeIndex, 0, 2),
             WebcamMirror = _settings.WebcamMirror,
+            WebcamCustomPosition = _settings.WebcamCustomPosition,
+            WebcamPosX = _settings.WebcamPosX,
+            WebcamPosY = _settings.WebcamPosY,
+            WebcamSizeW = _settings.WebcamSizeW,
+            WebcamSizeH = _settings.WebcamSizeH,
         };
 
         if (ModeWindow.IsChecked == true)
@@ -526,9 +543,6 @@ public partial class MainView : Window
             _bar = null;
             _spot?.Close();
             _spot = null;
-            // 录制结束后关闭画中画预览窗口
-            _pipOverlay?.HideAndClear();
-            _pipOverlay = null;
             _session = null;
 
             // 双显卡笔记本上硬编可能间歇不可用：刚起步失败时自动改软编按原参数重录一次
@@ -539,6 +553,35 @@ public partial class MainView : Window
                 SetStatus("硬件编码暂不可用，已自动改用软件编码重新开始录制…");
                 StartRecording(_lastOptions with { Encoder = EncoderKind.SoftwareX264 });
                 return;
+            }
+
+            if (_closing)
+            {
+                ClosePipOverlay();
+                return;
+            }
+
+            // 录制结束：显示预览，让用户拖拽调整位置。下次开录时再 Close。
+            if (_pipOverlay != null)
+            {
+                try
+                {
+                    ApplySavedPipPlacement(_pipOverlay);
+                    _pipOverlay.Show();
+                    ApplySavedPipPlacement(_pipOverlay);
+                    _pipOverlay.RestoreAndResume();
+                }
+                catch (Exception ex)
+                {
+                    System.IO.File.AppendAllText(
+                        System.IO.Path.Combine(AppContext.BaseDirectory, "pip_overlay_diag.log"),
+                        $"[{DateTime.Now:HH:mm:ss.fff}] 画中画覆盖层显示失败: {ex}\n");
+                    ClosePipOverlay();
+                }
+            }
+            else
+            {
+                DisposePreviewWebcam();
             }
 
             // 托盘模式下结束录制：不弹窗不打扰，状态通过托盘提示
@@ -703,20 +746,31 @@ public partial class MainView : Window
         _settings.WebcamEnabled = ChkWebcam.IsChecked == true;
         WebcamOptionsPanel.Visibility = _settings.WebcamEnabled ? Visibility.Visible : Visibility.Collapsed;
         SaveSettings();
+        if (_session is { IsRecording: true })
+            return;
+        if (_settings.WebcamEnabled)
+            _ = ShowAdjustablePreviewAsync();
+        else
+            ClosePipOverlay();
     }
 
-    private void WebcamOption_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_loadingSettings) return;
-        PullWebcamSettingsFromUi();
-        SaveSettings();
-    }
+    private void WebcamOption_Changed(object sender, RoutedEventArgs e) => OnWebcamOptionChanged();
 
-    private void WebcamOption_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private void WebcamOption_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => OnWebcamOptionChanged();
+
+    private void OnWebcamOptionChanged()
     {
         if (_loadingSettings) return;
+        string previousDevice = _settings.WebcamDeviceId;
         PullWebcamSettingsFromUi();
         SaveSettings();
+        if (previousDevice != _settings.WebcamDeviceId
+            && _settings.WebcamEnabled
+            && _session is not { IsRecording: true })
+        {
+            ClosePipOverlay();
+            _ = ShowAdjustablePreviewAsync();
+        }
     }
 
     private void PullWebcamSettingsFromUi()
@@ -724,14 +778,6 @@ public partial class MainView : Window
         _settings.WebcamEnabled = ChkWebcam.IsChecked == true;
         if (CboWebcamDevice.SelectedItem is WebcamDeviceInfo dev && !string.IsNullOrEmpty(dev.Id))
             _settings.WebcamDeviceId = dev.Id;
-        _settings.WebcamCorner = CboWebcamCorner.SelectedIndex switch
-        {
-            1 => "BottomLeft",
-            2 => "TopRight",
-            3 => "TopLeft",
-            _ => "BottomRight",
-        };
-        _settings.WebcamSizeIndex = Math.Clamp(CboWebcamSize.SelectedIndex, 0, 2);
         _settings.WebcamMirror = ChkWebcamMirror.IsChecked != false;
     }
 
@@ -739,14 +785,6 @@ public partial class MainView : Window
     {
         ChkWebcam.IsChecked = _settings.WebcamEnabled;
         WebcamOptionsPanel.Visibility = _settings.WebcamEnabled ? Visibility.Visible : Visibility.Collapsed;
-        CboWebcamCorner.SelectedIndex = _settings.WebcamCorner switch
-        {
-            "BottomLeft" => 1,
-            "TopRight" => 2,
-            "TopLeft" => 3,
-            _ => 0,
-        };
-        CboWebcamSize.SelectedIndex = Math.Clamp(_settings.WebcamSizeIndex, 0, 2);
         ChkWebcamMirror.IsChecked = _settings.WebcamMirror;
     }
 
@@ -895,7 +933,7 @@ public partial class MainView : Window
     }
 
     // ── 辅助 ───────────────────────────────────────
-    private void SetStatus(string text) => StatusText.Text = text;
+    private void SetStatus(string text) { }
 
     private void RefreshScreens()
     {
@@ -957,6 +995,160 @@ public partial class MainView : Window
         CboScale.SelectionChanged += (_, _) => SaveSettings();
         CboQuality.SelectionChanged += (_, _) => SaveSettings();
         _loadingSettings = false;
+        if (_settings.WebcamEnabled)
+            _ = ShowAdjustablePreviewAsync();
+    }
+
+    private async Task ShowAdjustablePreviewAsync()
+    {
+        if (_closing || _session is { IsRecording: true } || !_settings.WebcamEnabled)
+            return;
+        if (_pipOverlay != null)
+        {
+            if (_settings.WebcamCustomPosition)
+                ApplySavedPipPlacement(_pipOverlay);
+            _pipOverlay.Show();
+            _pipOverlay.RestoreAndResume();
+            return;
+        }
+
+        WebcamCapture? cam = null;
+        try
+        {
+            string? deviceId = string.IsNullOrWhiteSpace(_settings.WebcamDeviceId) ? null : _settings.WebcamDeviceId;
+            cam = await Task.Run(() =>
+            {
+                var wc = new WebcamCapture();
+                wc.Start(deviceId);
+                return wc;
+            }).ConfigureAwait(true);
+            if (_closing || !_settings.WebcamEnabled || _session is { IsRecording: true })
+            {
+                cam.Dispose();
+                return;
+            }
+            _previewWebcam = cam;
+            cam = null;
+            _pipOverlay = new PipOverlayWindow(_previewWebcam);
+            _pipOverlay.Closed += OnPipOverlayClosed;
+            _pipOverlay.GeometryCommitted += (_, _) => SavePipGeometry();
+            if (_settings.WebcamCustomPosition)
+                ApplySavedPipPlacement(_pipOverlay);
+            else
+                PlaceDefaultPreview(_pipOverlay);
+            _pipOverlay.Show();
+            _pipOverlay.RestoreAndResume();
+            WebcamStatusText.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            try { cam?.Dispose(); } catch { /* ignore */ }
+            WebcamStatusText.Text = "预览打开失败：" + ex.Message;
+            WebcamStatusText.Visibility = Visibility.Visible;
+        }
+    }
+
+    /// <summary>还没拖过时，预览放在画面右下，大约五分之一宽。</summary>
+    private void PlaceDefaultPreview(PipOverlayWindow overlay)
+    {
+        if (!TryGetAnchorScreenDip(overlay, out double sx, out double sy, out double sw, out double sh))
+            return;
+        double w = Math.Max(160, sw * 0.22);
+        double h = Math.Max(120, sh * 0.22);
+        overlay.Width = w;
+        overlay.Height = h;
+        overlay.Left = sx + sw - w - 24;
+        overlay.Top = sy + sh - h - 24;
+    }
+
+    private void OnPipOverlayClosed(object? sender, EventArgs e)
+    {
+        if (!ReferenceEquals(sender, _pipOverlay))
+            return;
+        _pipOverlay = null;
+        if (_session is { IsRecording: true })
+            return;
+        DisposePreviewWebcam();
+    }
+
+    /// <summary>关闭预览窗口并释放共享摄像头。录制进行中不要调用。</summary>
+    private void ClosePipOverlay()
+    {
+        var overlay = _pipOverlay;
+        _pipOverlay = null;
+        if (overlay != null)
+        {
+            try { overlay.Close(); } catch { /* ignore */ }
+        }
+        DisposePreviewWebcam();
+    }
+
+    private void DisposePreviewWebcam()
+    {
+        var cam = _previewWebcam;
+        _previewWebcam = null;
+        try { cam?.Dispose(); } catch { /* ignore */ }
+    }
+
+    private void SavePipGeometry()
+    {
+        if (_pipOverlay == null || _closing)
+            return;
+        if (!TryGetAnchorScreenDip(_pipOverlay, out double sx, out double sy, out double sw, out double sh))
+            return;
+
+        double sizeW = Math.Clamp(_pipOverlay.Width / sw, 0.05, 1);
+        double sizeH = Math.Clamp(_pipOverlay.Height / sh, 0.05, 1);
+        double posX = Math.Clamp((_pipOverlay.Left - sx) / sw, 0, 1 - sizeW);
+        double posY = Math.Clamp((_pipOverlay.Top - sy) / sh, 0, 1 - sizeH);
+
+        _settings.WebcamCustomPosition = true;
+        _settings.WebcamPosX = posX;
+        _settings.WebcamPosY = posY;
+        _settings.WebcamSizeW = sizeW;
+        _settings.WebcamSizeH = sizeH;
+        try { _settings.Save(); } catch { /* 配置写失败不影响预览 */ }
+    }
+
+    private void ApplySavedPipPlacement(PipOverlayWindow overlay)
+    {
+        if (!_settings.WebcamCustomPosition)
+            return;
+        if (!TryGetAnchorScreenDip(overlay, out double sx, out double sy, out double sw, out double sh))
+            return;
+
+        double w = Math.Max(80, Math.Clamp(_settings.WebcamSizeW, 0.05, 1) * sw);
+        double h = Math.Max(60, Math.Clamp(_settings.WebcamSizeH, 0.05, 1) * sh);
+        overlay.Width = w;
+        overlay.Height = h;
+        overlay.Left = sx + Math.Clamp(_settings.WebcamPosX, 0, 1) * sw;
+        overlay.Top = sy + Math.Clamp(_settings.WebcamPosY, 0, 1) * sh;
+    }
+
+    /// <summary>预览坐标相对当前选中的显示器（与成片里的比例一致）。</summary>
+    private bool TryGetAnchorScreenDip(Window overlay, out double sx, out double sy, out double sw, out double sh)
+    {
+        sx = sy = 0;
+        sw = sh = 0;
+        double dpiX = 1, dpiY = 1;
+        try
+        {
+            var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(overlay);
+            if (dpi.DpiScaleX > 0) dpiX = dpi.DpiScaleX;
+            if (dpi.DpiScaleY > 0) dpiY = dpi.DpiScaleY;
+        }
+        catch { /* 用 96 DPI */ }
+
+        var screens = WinFormsScreenHelper.Screens;
+        if (screens.Length == 0)
+            return false;
+        int index = Math.Clamp(_settings.ScreenIndex, 0, screens.Length - 1);
+        var bounds = screens[index].Bounds;
+        sx = bounds.X / dpiX;
+        sy = bounds.Y / dpiY;
+        sw = bounds.Width / dpiX;
+        sh = bounds.Height / dpiY;
+        return sw > 2 && sh > 2;
     }
 
     private void SaveSettings()

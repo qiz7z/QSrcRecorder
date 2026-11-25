@@ -1,4 +1,4 @@
-# QSrcRecorder · 拾光留影
+# QSrcRecorder
 
 <!-- <p align="center">
   <img src="docs/screenshot.png" alt="QSrcRecorder 界面截图" width="600"/>
@@ -6,19 +6,19 @@
 
 <p align="center">
   <strong>一个 Windows 轻量级录屏工具</strong><br/>
-  单文件夹绿色运行 · 摄像头画中画 · 多声道音频 · 音效调节
+  自包含单文件 · 摄像头画中画 · 多声道音频 · 音效调节
 </p>
 
 ---
 
 ## 简介
 
-**QSrcRecorder（拾光留影）** 是一款面向 Windows 的轻量级屏幕录制工具，专注于：
+**QSrcRecorder** 是一款面向 Windows 的轻量级屏幕录制工具，专注于：
 
-- **简洁易用** — 单文件夹绿色运行，无需安装
+- **简洁易用** — 自包含单文件，约 174 MB，无需安装 .NET 8 运行时
 - **高质量录制** — 硬件编码 + 软件兜底，稳定高效
 - **多功能音频** — 系统声音 / 麦克风独立录制，支持音效调节
-- **摄像头画中画** — 录制时实时预览，成片自动叠加
+- **摄像头画中画** — 预览窗口可自由拖动、缩放，成片按该位置和大小叠加
 
 ### 适用场景
 
@@ -37,8 +37,9 @@
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 全屏录制 | ✅ | 捕获整个显示器 |
-| 区域录制 | ✅ | 框选特定区域录制 |
+| 全屏录制 | ✅ | 捕获所选显示器 |
+| 选择显示器 | ✅ | 录制来源列出已连接的显示器，录制其中一块 |
+| 区域录制 | ✅ | 在所选显示器上框选区域录制 |
 | 窗口录制 | ✅ | 指定应用窗口录制 |
 | H.264 MP4 输出 | ✅ | faststart 优化，支持流式播放 |
 | 硬件编码 | ✅ | NVENC / QuickSync / AMF 自动选择 |
@@ -62,20 +63,27 @@
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 摄像头画中画 | ✅ | 右下角叠加，可拖动调整 |
+| 摄像头画中画 | ✅ | 勾选后拖动预览窗口改位置，拖四边或四角改大小 |
 | 鼠标点击高亮 | ✅ | 光圈动画，颜色可自定义 |
 | 鼠标跟随圆 | ✅ | 常驻高亮，提升演示效果 |
 | 快捷键支持 | ✅ | F9 开始/停止，F10 暂停/继续 |
 | 录制悬浮条 | ✅ | 显示时长，可隐藏收进托盘 |
 | 设置持久化 | ✅ | 自动保存所有配置 |
 
-### 即将推出
+### 界面
+
+- 深色科技风，星空背景，半透明面板
+- 窗口 960×540（16:9）
+- 正文：中文华文中宋，英文和数字 Times New Roman
+- 标题栏名称使用华文隶书
+- 任务栏图标：深色底、青色六瓣光圈
+
+### 尚未实现
 
 | 功能 | 计划版本 |
 |------|----------|
-| 定时自动停止 | v0.3 |
-| 录制倒计时 | v0.3 |
-| 多显示器支持 | v0.3 |
+| 定时自动停止 | 规划中 |
+| 录制倒计时 | 规划中 |
 | 摄像头美颜 | v0.4 |
 | 录制历史列表 | v1.0 |
 | 安装包发布 | v1.0 |
@@ -86,8 +94,9 @@
 
 ### 运行环境
 
-- **操作系统**：Windows 10 1903+ / Windows 11
-- **运行时**：自带 .NET 8 运行时（自包含版本）
+- **操作系统**：Windows 10 1903+ / Windows 11（x64）
+- **运行时**：发布包已包含 .NET 8 桌面运行时，用户不用单独安装
+- **同目录文件**：`ffmpeg.exe` 和 `ffprobe.exe` 必须放在 `QSrcRecorder.exe` 旁边，编码和检查成片时使用
 - **显卡**：支持 DirectX 11 及以上（硬件编码需要）
 
 ### 开发环境
@@ -101,8 +110,8 @@
 
 ### 方式一：直接运行（推荐）
 
-1. 从 [Releases](https://github.com/qiz7z/QSrcRecorder/releases) 下载 `QSrcRecorder-v0.2.exe`
-2. 双击运行即可，无需安装
+1. 准备三个文件放在同一目录：`QSrcRecorder.exe`（约 174 MB）、`ffmpeg.exe`、`ffprobe.exe`
+2. 双击 `QSrcRecorder.exe`。不需要安装 .NET 8 运行时
 
 ### 方式二：本地构建
 
@@ -111,11 +120,11 @@
 git clone https://github.com/qiz7z/QSrcRecorder.git
 cd QSrcRecorder
 
-# 构建并发布（自包含 exe）
-dotnet publish src/ScreenRecorder -c Release -r win-x64 --self-contained true -o publish
+# 构建并发布（csproj 已设为 win-x64 自包含单文件）
+dotnet publish src/ScreenRecorder -c Release
 
-# 运行
-./publish/QSrcRecorder.exe
+# 产物目录里会有 QSrcRecorder.exe、ffmpeg.exe、ffprobe.exe
+# src/ScreenRecorder/bin/Release/net8.0-windows10.0.22000.0/win-x64/publish/
 ```
 
 ### 方式三：开发调试
@@ -195,7 +204,8 @@ UI 层 (WPF) → 会话控制层 → 采集引擎 + 音频捕获 → 编码器
 | 版本 | 状态 | 功能 |
 |------|------|------|
 | v0.2 | ✅ 已完成 | 多声道音频、摄像头画中画、音效调节、点击/鼠标高亮 |
-| v0.3 | 🚧 规划中 | 定时自动停止、多显示器支持、录制倒计时 |
+| 当前界面 | ✅ 已完成 | 深色星空 960×540、华文中宋 / Times New Roman / 标题栏华文隶书、光圈图标、画中画自由拖动与缩放、选择显示器、自包含单文件发布 |
+| 后续 | 🚧 规划中 | 定时自动停止、录制倒计时 |
 | v1.0 | 📋 规划中 | 安装包发布、录制历史列表、性能优化 |
 
 ---
@@ -217,7 +227,9 @@ QSrcRecorder/
 │   ├── ScreenRecorder.Tests/    # 单元测试
 │   └── ScreenRecorder.Smoke/    # 冒烟测试
 ├── tools/
-│   └── ffmpeg/                  # 内置 ffmpeg
+│   ├── ffmpeg/                  # 内置 ffmpeg
+│   ├── IconGen/                 # 应用图标生成
+│   └── BgGen/                   # 星空背景生成
 ├── docs/
 │   └── design-system.md         # 设计系统文档
 └── README.md
